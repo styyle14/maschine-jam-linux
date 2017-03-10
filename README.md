@@ -108,8 +108,7 @@ Device Status:     0x0000
   (Bus Powered)
 ```
 ```
-sudo usbhid-dump -m 17cc:1500 | grep -v : | xxd -r -p | hidrd-convert -o spec
-[sudo] password for jim: 
+$ sudo usbhid-dump -m 17cc:1500 | grep -v : | xxd -r -p | hidrd-convert -o spec
 Usage Page (FF01h),                     ; FF01h, vendor-defined
 Usage (00h),
 Collection (Application),
