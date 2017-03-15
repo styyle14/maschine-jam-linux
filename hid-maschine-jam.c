@@ -53,6 +53,8 @@ static int maschine_jam_midi_in_open(struct snd_rawmidi_substream *substream)
 
 static int maschine_jam_midi_in_close(struct snd_rawmidi_substream *substream)
 {
+	struct maschine_jam_snd *mjs = substream->rmidi->private_data;
+	
 	printk(KERN_ALERT "in_close()");
 	mjs->midi_in_substream = NULL;
 	return 0;
@@ -66,7 +68,6 @@ static void maschine_jam_midi_in_trigger(struct snd_rawmidi_substream *substream
 	mjs->in_triggered = up;
 }
 
-// maschine jam input, rawmidi output
 static struct snd_rawmidi_ops maschine_jam_midi_in_ops = {
 	.open = maschine_jam_midi_in_open,
 	.close = maschine_jam_midi_in_close,
@@ -84,20 +85,19 @@ static int maschine_jam_midi_out_open(struct snd_rawmidi_substream *substream)
 
 static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream)
 {
+	struct maschine_jam_snd *mjs = substream->rmidi->private_data;
+	
 	printk(KERN_ALERT "out_close()");
 	mjs->midi_out_substream = NULL;
 	return 0;
 }
 
-// get vitual midi data and transmit to physical maschine jam
+// get virtual midi data and transmit to physical maschine jam, cannot block
 static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substream, int up)
 {
+	unsigned char data;
 	if (up != 0) {
-		while (1) {
-			unsigned char data;
-			if (snd_rawmidi_transmit(substream, &data, 1) != 1){
-				break; /* no more data */
-			}
+		while (snd_rawmidi_transmit(substream, &data, 1) != 1) {
 			printk(KERN_ALERT "out_trigger data - %d", data);
 		}
 	}
@@ -200,15 +200,13 @@ static int maschine_jam_snd_initialize(struct maschine_jam_snd *mjs)
 		return -ENODEV;
 	}
 
-	if (!enable[dev]) {
+	if (!enable[dev]){
 		printk(KERN_ALERT "initialize - -ENOENT");
 		dev++;
 		return -ENOENT;
 	}
-	printk(KERN_ALERT "initialize - 1");
 
 	/* Setup sound card */
-
 	err = snd_card_new(&mjs->mjd->hdev->dev, index[dev], id[dev],
 			   THIS_MODULE, 0, &card);
 	if (err < 0) {
@@ -217,7 +215,6 @@ static int maschine_jam_snd_initialize(struct maschine_jam_snd *mjs)
 		goto fail;
 	}
 	mjs->card = card;
-	printk(KERN_ALERT "initialize - 2");
 
 	/* Setup sound device */
 	err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, mjs, &ops);
@@ -229,7 +226,6 @@ static int maschine_jam_snd_initialize(struct maschine_jam_snd *mjs)
 	strncpy(card->driver, shortname, sizeof(card->driver));
 	strncpy(card->shortname, shortname, sizeof(card->shortname));
 	strncpy(card->longname, longname, sizeof(card->longname));
-	printk(KERN_ALERT "initialize - 3");
 
 	/* Set up rawmidi */
 	err = snd_rawmidi_new(card, card->shortname, 0, 1, 1, &rawmidi);
@@ -241,14 +237,11 @@ static int maschine_jam_snd_initialize(struct maschine_jam_snd *mjs)
 	strncpy(rawmidi->name, card->longname, sizeof(rawmidi->name));
 	rawmidi->info_flags = SNDRV_RAWMIDI_INFO_INPUT | SNDRV_RAWMIDI_INFO_OUTPUT | SNDRV_RAWMIDI_INFO_DUPLEX;
 	rawmidi->private_data = mjs;
-	printk(KERN_ALERT "initialize - 4");
 	
 	snd_rawmidi_set_ops(rawmidi, SNDRV_RAWMIDI_STREAM_INPUT, &maschine_jam_midi_in_ops);
 	snd_rawmidi_set_ops(rawmidi, SNDRV_RAWMIDI_STREAM_OUTPUT, &maschine_jam_midi_out_ops);
-	printk(KERN_ALERT "initialize - 5");
 
 	spin_lock_init(&mjs->rawmidi_in_lock);
-	printk(KERN_ALERT "initialize - 6");
 
 	/* register it */
 	err = snd_card_register(card);
