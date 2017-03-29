@@ -8,13 +8,6 @@
 #include <sound/rawmidi.h>
 #include "hid-ids.h"
 
-struct maschine_jam_private_data;
-
-struct maschine_jam {
-	struct hid_device *mj_hid_device;
-	struct maschine_jam_private_data *mj_private_data;
-};
-
 struct maschine_jam_private_data {
 	struct maschine_jam		*mj;
 	unsigned short			interface_number;
@@ -26,15 +19,22 @@ struct maschine_jam_private_data {
 	struct snd_rawmidi_substream	*midi_out_substream;
 	unsigned long			midi_out_up;
 	spinlock_t				midi_out_lock;
-	unsigned long 			hid_report_led_buttons;
+	struct work_struct		hid_report_write_report_work;
+	unsigned char 			hid_report_led_buttons_1[37];
+	unsigned char 			hid_report_led_buttons_2[16];
 	spinlock_t 				hid_report_led_buttons_lock;
 	struct work_struct		hid_report_led_buttons_work;
-	unsigned long 			hid_report_led_pads;
+	unsigned char 			hid_report_led_pads[80];
 	spinlock_t 				hid_report_led_pads_lock;
 	struct work_struct		hid_report_led_pads_work;
-	unsigned long 			hid_report_led_strips;
+	unsigned char 			hid_report_led_strips[88];
 	spinlock_t 				hid_report_led_strips_lock;
 	struct work_struct		hid_report_led_strips_work;
+};
+
+struct maschine_jam {
+	struct hid_device *mj_hid_device;
+	struct maschine_jam_private_data *mj_private_data;
 };
 
 static const char shortname[] = "MASCHINEJAM";
@@ -48,27 +48,36 @@ static int maschine_jam_midi_in_open(struct snd_rawmidi_substream *substream)
 {
 	struct maschine_jam_private_data *mj_private_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "in_open()");
+	printk(KERN_ALERT "in_open() - 1");
+	spin_lock_irq(&mj_private_data->midi_in_lock);
 	mj_private_data->midi_in_substream = substream;
+	spin_unlock_irq(&mj_private_data->midi_in_lock);
+	printk(KERN_ALERT "in_open() - 2");
 	return 0;
 }
 
 static int maschine_jam_midi_in_close(struct snd_rawmidi_substream *substream)
 {
-	unsigned long flags;
 	struct maschine_jam_private_data *mj_private_data = substream->rmidi->private_data;
 	
-	printk(KERN_ALERT "in_close()");
+	printk(KERN_ALERT "in_close() - 1");
+	spin_lock_irq(&mj_private_data->midi_in_lock);
 	mj_private_data->midi_in_substream = NULL;
+	spin_unlock_irq(&mj_private_data->midi_in_lock);
+	printk(KERN_ALERT "in_close() - 2");
 	return 0;
 }
 
 static void maschine_jam_midi_in_trigger(struct snd_rawmidi_substream *substream, int up)
 {
+	unsigned long flags;
 	struct maschine_jam_private_data *mj_private_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "in_trigger()");
+	printk(KERN_ALERT "in_trigger() - 1");
+	spin_lock_irqsave(&mj_private_data->midi_in_lock, flags);
 	mj_private_data->midi_in_up = up;
+	spin_unlock_irqrestore(&mj_private_data->midi_in_lock, flags);
+	printk(KERN_ALERT "in_trigger() - 2");
 }
 
 // MIDI_IN operations
@@ -77,6 +86,25 @@ static struct snd_rawmidi_ops maschine_jam_midi_in_ops = {
 	.close = maschine_jam_midi_in_close,
 	.trigger = maschine_jam_midi_in_trigger
 };
+
+static void maschine_jam_hid_write_report(struct work_struct *work)
+{
+	int i;
+	unsigned char buffer[54];
+	struct maschine_jam_private_data *mj_private_data = container_of(work, struct maschine_jam_private_data, hid_report_write_report_work);
+	printk(KERN_ALERT "maschine_jam_hid_write_report() - 1");
+	buffer[0] = 0x80;
+	spin_lock(&mj_private_data->hid_report_led_buttons_lock);
+	for(i=0;i<sizeof(mj_private_data->hid_report_led_buttons_1); i++){
+		buffer[i+1] = mj_private_data->hid_report_led_buttons_1[i];
+	}
+	for(i=0;i<sizeof(mj_private_data->hid_report_led_buttons_2); i++){
+		buffer[i+sizeof(mj_private_data->hid_report_led_buttons_1)] = mj_private_data->hid_report_led_buttons_2[i];
+	}
+	spin_unlock(&mj_private_data->hid_report_led_buttons_lock);
+	hid_hw_output_report(mj_private_data->mj->mj_hid_device, (unsigned char*)&buffer, sizeof(buffer));
+	printk(KERN_ALERT "maschine_jam_hid_write_report() - 2");
+}
 
 static int maschine_jam_midi_out_open(struct snd_rawmidi_substream *substream)
 {
@@ -87,7 +115,7 @@ static int maschine_jam_midi_out_open(struct snd_rawmidi_substream *substream)
 	spin_lock_irq(&mj_private_data->midi_out_lock);
 	mj_private_data->midi_out_substream = substream;
 	mj_private_data->midi_out_up = 0;
-	spin_lock_irq(&mj_private_data->midi_out_lock);
+	spin_unlock_irq(&mj_private_data->midi_out_lock);
 	
 	printk(KERN_ALERT "out_open() - 2");
 	return 0;
@@ -102,7 +130,7 @@ static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream)
 	spin_lock_irq(&mj_private_data->midi_out_lock);
 	mj_private_data->midi_out_substream = NULL;
 	mj_private_data->midi_out_up = 0;
-	spin_lock_irq(&mj_private_data->midi_out_lock);
+	spin_unlock_irq(&mj_private_data->midi_out_lock);
 	
 	printk(KERN_ALERT "out_close() - 2");
 	return 0;
@@ -119,16 +147,16 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 		while (snd_rawmidi_transmit(substream, &data, 1) == 1) {
 			printk(KERN_ALERT "out_trigger data - %d", data);
 			spin_lock_irqsave(&mj_private_data->hid_report_led_buttons_lock, flags);
-			mj_private_data->hid_report_led_buttons = data;
-			spin_lock_irqrestore(&mj_private_data->hid_report_led_buttons_lock, flags);
-			//hid_hw_output_report(mj_hid_device, buf, sizeof(buf));
+			mj_private_data->hid_report_led_buttons_1[0] = data;
+			spin_unlock_irqrestore(&mj_private_data->hid_report_led_buttons_lock, flags);
+			schedule_work(&mj_private_data->hid_report_write_report_work);
 		}
 	}else{
 		printk(KERN_ALERT "out_trigger: up = 0");
 	}
 	spin_lock_irqsave(&mj_private_data->midi_out_lock, flags);
 	mj_private_data->midi_out_up = up;
-	spin_lock_irqrestore(&mj_private_data->midi_out_lock, flags);
+	spin_unlock_irqrestore(&mj_private_data->midi_out_lock, flags);
 }
 
 // MIDI_OUT operations
@@ -180,9 +208,9 @@ static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_r
 	
 	printk(KERN_ALERT "raw_event() - size %d", size);
 	if (report->id == data[0]){
-		printk(KERN_ALERT "report id %d - %X%X%X%X",data[0], data[1], data[2], data[3], data[4]);
 		switch (report->id) {
 			case 0x01:
+				printk(KERN_ALERT "report - %X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X",data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16]);
 				if (data[2] == 0x2){
 					maschine_jam_write_midi_note(mj->mj_private_data, 0x90, 0x40, 0x40);
 					printk(KERN_ALERT "key-on");
@@ -278,6 +306,22 @@ static int maschine_jam_private_data_initialize(struct maschine_jam_private_data
 		printk(KERN_ALERT "failed to register maschine jam sound card");
 		goto fail;
 	}
+		
+	INIT_WORK(&mj_private_data->hid_report_write_report_work, maschine_jam_hid_write_report);
+	
+	memset(mj_private_data->hid_report_led_buttons_1, 0, sizeof(mj_private_data->hid_report_led_buttons_1));
+	memset(mj_private_data->hid_report_led_buttons_2, 0, sizeof(mj_private_data->hid_report_led_buttons_2));
+	spin_lock_init(&mj_private_data->hid_report_led_buttons_lock);
+	INIT_WORK(&mj_private_data->hid_report_led_buttons_work, maschine_jam_hid_write_report);
+	
+	memset(mj_private_data->hid_report_led_pads, 0, sizeof(mj_private_data->hid_report_led_pads));
+	spin_lock_init(&mj_private_data->hid_report_led_pads_lock);
+	INIT_WORK(&mj_private_data->hid_report_led_pads_work, maschine_jam_hid_write_report);
+	
+	memset(mj_private_data->hid_report_led_strips, 0, sizeof(mj_private_data->hid_report_led_strips));
+	spin_lock_init(&mj_private_data->hid_report_led_strips_lock);
+	INIT_WORK(&mj_private_data->hid_report_led_strips_work, maschine_jam_hid_write_report);
+	
 	printk(KERN_ALERT "initialize finished");
 	return 0;
 
