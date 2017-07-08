@@ -8,14 +8,29 @@
 #include <sound/rawmidi.h>
 #include "hid-ids.h"
 
+struct maschine_jam_midi_in_mapping {
+	uint8_t midi_note;
+};
+
+struct maschine_jam_midi_out_mapping {
+	uint8_t midi_note;
+};
+
 struct maschine_jam_private_data {
 	struct maschine_jam		*mj;
+	unsigned char			hid_report0x01[17];
+	struct maschine_jam_midi_in_mapping midi_in_button_mapping[120];
+	unsigned char			hid_report0x02[48];
+	struct maschine_jam_midi_in_mapping midi_in_smartstrip_mapping[16];
 	unsigned short			interface_number;
 	struct snd_card			*card;
 	struct snd_rawmidi		*rawmidi;
 	struct snd_rawmidi_substream	*midi_in_substream;
 	unsigned long			midi_in_up;
 	spinlock_t				midi_in_lock;
+	struct maschine_jam_midi_out_mapping midi_out_led_buttons_mapping[120];
+	struct maschine_jam_midi_out_mapping midi_out_led_pads_mapping[120];
+	struct maschine_jam_midi_out_mapping midi_out_led_strips_mapping[8];
 	struct snd_rawmidi_substream	*midi_out_substream;
 	unsigned long			midi_out_up;
 	spinlock_t				midi_out_lock;
@@ -190,7 +205,7 @@ static void maschine_jam_write_midi_note(struct maschine_jam_private_data *mj_pr
 	buffer[1] = note;
 	buffer[2] = velocity;
 
-	printk(KERN_ALERT "write_midi_note() - start");
+	printk(KERN_ALERT "write_midi_note() - start %X%X%X", status, note, velocity);
 	
 	spin_lock_irqsave(&mj_private_data->midi_in_lock, flags);
 	if (mj_private_data->midi_in_substream){
@@ -202,6 +217,42 @@ static void maschine_jam_write_midi_note(struct maschine_jam_private_data *mj_pr
 	return;
 }
 
+void maschine_jam_parse_report0x01(struct maschine_jam_private_data *mj_private_data, u8 *data, int size){
+	unsigned int button_bit, button_byte;
+	
+	for (button_byte=2; button_byte<sizeof(mj_private_data->hid_report0x01) && button_byte<size; button_byte++){
+		if (mj_private_data->hid_report0x01[button_byte] != data[button_byte]){
+			for (button_bit=0; button_bit<8; button_bit++){
+				if (test_bit(button_bit, (long unsigned int*)&data[button_byte]) != test_bit(button_bit, (long unsigned int*)&mj_private_data->hid_report0x01[button_byte])){
+					if (test_bit(button_bit, (long unsigned int*)&data[button_byte])){
+						maschine_jam_write_midi_note(mj_private_data, 0x90, mj_private_data->midi_in_button_mapping[button_bit + button_byte*8].midi_note, 0x40);
+						printk(KERN_ALERT "key-on - byte %d - bit %d", button_byte, button_bit);
+					}else{
+						maschine_jam_write_midi_note(mj_private_data, 0x80, mj_private_data->midi_in_button_mapping[button_bit + button_byte*8].midi_note, 0x00);
+						printk(KERN_ALERT "key-off - byte %d - bit %d", button_byte, button_bit);
+					}
+				}
+			}
+			mj_private_data->hid_report0x01[button_byte] = data[button_byte];
+		}
+	}
+}
+
+void maschine_jam_parse_report0x02(struct maschine_jam_private_data *mj_private_data, u8 *data, int size){
+	int smartstrip;
+	
+	for (smartstrip=0; (smartstrip*6)+1<size; smartstrip++){
+		if (mj_private_data->hid_report0x02[strip_byte] != data[strip_byte]){
+			maschine_jam_write_midi_note(mj_private_data, 0x90, mj_private_data->midi_in_smartstrip_mapping[].midi_note, data[strip_byte]);
+			mj_private_data->hid_report0x02[strip_byte] = data[strip_byte]
+		}
+		if (mj_private_data->hid_report0x02[strip_byte+1] != data[strip_byte+1]){
+			maschine_jam_write_midi_note(mj_private_data, 0x90, mj_private_data->midi_in_smartstrip_mapping[].midi_note, data[strip_byte+1]);
+			mj_private_data->hid_report0x02[strip_byte+1] = data[strip_byte+1]
+		}
+	}
+}
+
 static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_report *report, u8 *data, int size)
 {
 	struct maschine_jam *mj = hid_get_drvdata(mj_hid_device);
@@ -211,15 +262,14 @@ static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_r
 		switch (report->id) {
 			case 0x01:
 				printk(KERN_ALERT "report - %X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X",data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16]);
-				if (data[2] == 0x2){
-					maschine_jam_write_midi_note(mj->mj_private_data, 0x90, 0x40, 0x40);
-					printk(KERN_ALERT "key-on");
-				}else{
-					maschine_jam_write_midi_note(mj->mj_private_data, 0x80, 0x40, 0x00);
-					printk(KERN_ALERT "key-off");
-				}
+				maschine_jam_parse_report0x01(mj->mj_private_data, data, size);
 				break;
 			case 0x02:
+				printk(KERN_ALERT "report - %X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X",
+				data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16],
+				data[17], data[18], data[19], data[20], data[21], data[22], data[23], data[24], data[25], data[26], data[27], data[28], data[29], data[30], data[31], data[32], data[33],
+				data[34], data[35], data[36], data[37], data[38], data[39], data[40], data[41], data[42], data[43], data[44], data[45], data[46], data[47], data[48]);
+				maschine_jam_parse_report0x02(mj->mj_private_data, data, size);
 				break;
 			default:
 				printk(KERN_ALERT "report id is unknown");
@@ -240,10 +290,17 @@ static int maschine_jam_private_data_initialize(struct maschine_jam_private_data
 	struct snd_card *card;
 	struct snd_rawmidi *rawmidi;
 	int err;
-
+	unsigned int i;
+	
 	static struct snd_device_ops ops = {
 		.dev_free = maschine_jam_snd_dev_free,
 	};
+	
+	for(i=0; i<sizeof(mj_private_data->midi_in_button_mapping); i++){
+		mj_private_data->midi_in_button_mapping[i].midi_note = 0x40;
+	}
+	
+	
 	printk(KERN_ALERT "initialize started - dev %d - interface_number %d", dev, mj_private_data->interface_number);
 
 	if (mj_private_data->interface_number != 0){
