@@ -8,7 +8,6 @@
 #include <sound/rawmidi.h>
 
 #include "hid-ids.h"
-#include "hid-maschine-jam-mapping-bitwig.h"
 
 struct maschine_jam_midi_in_mapping {
 	char label[64];
@@ -324,7 +323,8 @@ static const struct attribute *dev_attr_channelz_attrs[] = {
 static int maschine_jam_private_data_initialize(struct maschine_jam_private_data *mj_private_data)
 {
 	static int dev;
-	struct kobject *folder = NULL;
+	struct kobject* directory_inputs = NULL;
+	struct kobject* directory_inputs_buttons = NULL;
 	struct snd_card *card;
 	struct snd_rawmidi *rawmidi;
 	int err;
@@ -340,11 +340,15 @@ static int maschine_jam_private_data_initialize(struct maschine_jam_private_data
 	}
 
 	/* create sysfs variables */
-	folder = kobject_create_and_add("hellozz", &mj_private_data->mj->mj_hid_device->dev.kobj);
-	if (folder == NULL) {
+	directory_inputs = kobject_create_and_add("inputs", &mj_private_data->mj->mj_hid_device->dev.kobj);
+	if (directory_inputs == NULL) {
 		printk(KERN_ALERT "kobject_create_and_add failed!");
 	}
-	err = sysfs_create_files(folder, dev_attr_channelz_attrs);
+	directory_inputs_buttons = kobject_create_and_add("buttons", directory_inputs);
+	if (directory_inputs_buttons == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add failed!");
+	}
+	err = sysfs_create_files(directory_inputs_buttons, dev_attr_channelz_attrs);
 	if (err < 0) {
 		printk(KERN_ALERT "device_create_file failed!");
 	}
