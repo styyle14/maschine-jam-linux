@@ -297,34 +297,83 @@ static int maschine_jam_snd_dev_free(struct snd_device *dev)
 	return 0;
 }
 
-#define NAMER "thiserz\n"
+static ssize_t maschine_jam_input_button_00_mapping_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
+	struct kobject *maschine_jam_input_button_dir = kobj;
+	struct kobject *maschine_jam_input_dir = maschine_jam_input_button_dir->parent;
+	struct kobject *maschine_jam_kobj = maschine_jam_input_dir->parent;
+	struct device *dev = container_of(maschine_jam_kobj, struct device, kobj);
+	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+	struct maschine_jam *mj = hid_get_drvdata(hdev);
 
-static ssize_t maschine_jam_00_sysfs_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
-	memcpy(buf, NAMER, sizeof(NAMER));
-	return sizeof(NAMER);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", mj->mj_private_data->midi_in_button_mapping[00].midi_note);
 }
-static ssize_t maschine_jam_00_sysfs_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count){
-	return 0;
+static ssize_t maschine_jam_input_button_00_mapping_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count){
+	unsigned int store_value;
+	struct kobject *maschine_jam_input_button_dir = kobj;
+	struct kobject *maschine_jam_input_dir = maschine_jam_input_button_dir->parent;
+	struct kobject *maschine_jam_kobj = maschine_jam_input_dir->parent;
+	struct device *dev = container_of(maschine_jam_kobj, struct device, kobj);
+	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+	struct maschine_jam *mj = hid_get_drvdata(hdev);
+
+	sscanf(buf, "%u", &store_value);
+	mj->mj_private_data->midi_in_button_mapping[00].midi_note = store_value & 0xFF;
+
+	return count;
 }
-// static DEVICE_ATTR(channelz, S_IRUGO | S_IWUSR | S_IWGRP , maschine_jam_00_sysfs_show, maschine_jam_00_sysfs_store);
-// static struct device_attribute *sysfs_device_attr_channelz = {
-// 		&dev_attr_channelz,
-// };
-static struct kobj_attribute channelz_attr = {
-	.attr = {.name = "channelz_attr", .mode = 0666},
-	.show = maschine_jam_00_sysfs_show,
-	.store = maschine_jam_00_sysfs_store,
+ static struct kobj_attribute maschine_jam_input_button_00_attribute = {
+ 	.attr = {.name = "input_button_00_mapping", .mode = 0666},
+ 	.show = maschine_jam_input_button_00_mapping_show,
+ 	.store = maschine_jam_input_button_00_mapping_store,
 };
-static const struct attribute *dev_attr_channelz_attrs[] = {
-	&channelz_attr.attr,
+static const struct attribute *maschine_jam_input_button_00_attributes[] = {
+	&maschine_jam_input_button_00_attribute.attr,
 	NULL
 };
+
+static int maschine_jam_private_data_initialize_inputs(struct kobject* device_kobject){
+	int err = 0;
+	struct kobject* directory_inputs = NULL;
+	struct kobject* directory_inputs_buttons = NULL;
+	struct kobject* directory_inputs_smartstrips = NULL;
+
+	directory_inputs = kobject_create_and_add("inputs", device_kobject);
+	if (directory_inputs == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add failed!");
+	}
+	directory_inputs_buttons = kobject_create_and_add("buttons", directory_inputs);
+	if (directory_inputs_buttons == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add failed!");
+	}
+	err = sysfs_create_files(directory_inputs_buttons, maschine_jam_input_button_00_attributes);
+	if (err < 0) {
+		printk(KERN_ALERT "device_create_file failed!");
+	}
+	directory_inputs_smartstrips = kobject_create_and_add("smartstrips", directory_inputs);
+	if (directory_inputs_smartstrips == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add failed!");
+	}
+	return err;
+}
+static int maschine_jam_private_data_initialize_outputs(struct kobject* device_kobject){
+	int err = 0;
+	struct kobject* directory_outputs = NULL;
+	struct kobject* directory_outputs_leds = NULL;
+
+	directory_outputs = kobject_create_and_add("outputs", device_kobject);
+	if (directory_outputs == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add failed!");
+	}
+	directory_outputs_leds = kobject_create_and_add("leds", directory_outputs);
+	if (directory_outputs_leds == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add failed!");
+	}
+	return err;
+}
 
 static int maschine_jam_private_data_initialize(struct maschine_jam_private_data *mj_private_data)
 {
 	static int dev;
-	struct kobject* directory_inputs = NULL;
-	struct kobject* directory_inputs_buttons = NULL;
 	struct snd_card *card;
 	struct snd_rawmidi *rawmidi;
 	int err;
@@ -337,24 +386,12 @@ static int maschine_jam_private_data_initialize(struct maschine_jam_private_data
 	// Initialize midi_in button mapping
 	for(i=0; i<sizeof(mj_private_data->midi_in_button_mapping)/sizeof(mj_private_data->midi_in_button_mapping[0]); i++){
 		mj_private_data->midi_in_button_mapping[i].midi_note = i;
+		printk(KERN_ALERT "set %d", mj_private_data->midi_in_button_mapping[i].midi_note);
 	}
-
-	/* create sysfs variables */
-	directory_inputs = kobject_create_and_add("inputs", &mj_private_data->mj->mj_hid_device->dev.kobj);
-	if (directory_inputs == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add failed!");
-	}
-	directory_inputs_buttons = kobject_create_and_add("buttons", directory_inputs);
-	if (directory_inputs_buttons == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add failed!");
-	}
-	err = sysfs_create_files(directory_inputs_buttons, dev_attr_channelz_attrs);
-	if (err < 0) {
-		printk(KERN_ALERT "device_create_file failed!");
-	}
+	maschine_jam_private_data_initialize_inputs(&mj_private_data->mj->mj_hid_device->dev.kobj);
+	maschine_jam_private_data_initialize_outputs(&mj_private_data->mj->mj_hid_device->dev.kobj);
 
 	//device_remove_file
-	// void kobject_put( struct kobject  * subdir  );
 
 	printk(KERN_ALERT "initialize started - dev %d - interface_number %d", dev, mj_private_data->interface_number);
 
