@@ -9,6 +9,11 @@
 
 #include "hid-ids.h"
 
+#define MASCHINE_JAM_NUMBER_KNOBS 2
+#define MASCHINE_JAM_NUMBER_BUTTONS 120
+#define MASCHINE_JAM_NUMBER_SMARTSTRIPS 16
+#define MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS 0664
+
 typedef uint8_t midi_note;
 typedef uint8_t midi_value;
 
@@ -16,10 +21,10 @@ struct maschine_jam_private_data {
 	struct maschine_jam		*mj;
 	uint8_t			hid_report01_knobs[1];
 	uint8_t			hid_report01_buttons[15];
-	midi_note midi_in_knob_mapping[2];
-	midi_note midi_in_button_mapping[120];
-	uint8_t			hid_report0x02[48];
-	midi_note midi_in_strip_byte_mapping[16];
+	midi_note midi_in_knob_mapping[MASCHINE_JAM_NUMBER_KNOBS];
+	midi_note midi_in_button_mapping[MASCHINE_JAM_NUMBER_BUTTONS];
+	uint8_t			hid_report02_smartstrips[48];
+	midi_note midi_in_strip_byte_mapping[MASCHINE_JAM_NUMBER_SMARTSTRIPS];
 	unsigned short			interface_number;
 	struct snd_card			*card;
 	struct snd_rawmidi		*rawmidi;
@@ -57,8 +62,7 @@ static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
 static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
 
-static int maschine_jam_midi_in_open(struct snd_rawmidi_substream *substream)
-{
+static int maschine_jam_midi_in_open(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_private_data *mj_private_data = substream->rmidi->private_data;
 
 	printk(KERN_ALERT "in_open() - 1");
@@ -69,8 +73,7 @@ static int maschine_jam_midi_in_open(struct snd_rawmidi_substream *substream)
 	return 0;
 }
 
-static int maschine_jam_midi_in_close(struct snd_rawmidi_substream *substream)
-{
+static int maschine_jam_midi_in_close(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_private_data *mj_private_data = substream->rmidi->private_data;
 
 	printk(KERN_ALERT "in_close() - 1");
@@ -81,8 +84,7 @@ static int maschine_jam_midi_in_close(struct snd_rawmidi_substream *substream)
 	return 0;
 }
 
-static void maschine_jam_midi_in_trigger(struct snd_rawmidi_substream *substream, int up)
-{
+static void maschine_jam_midi_in_trigger(struct snd_rawmidi_substream *substream, int up){
 	unsigned long flags;
 	struct maschine_jam_private_data *mj_private_data = substream->rmidi->private_data;
 
@@ -100,8 +102,7 @@ static struct snd_rawmidi_ops maschine_jam_midi_in_ops = {
 	.trigger = maschine_jam_midi_in_trigger
 };
 
-static void maschine_jam_hid_write_report(struct work_struct *work)
-{
+static void maschine_jam_hid_write_report(struct work_struct *work){
 	int i;
 	unsigned char buffer[54];
 	struct maschine_jam_private_data *mj_private_data = container_of(work, struct maschine_jam_private_data, hid_report_write_report_work);
@@ -119,8 +120,7 @@ static void maschine_jam_hid_write_report(struct work_struct *work)
 	printk(KERN_ALERT "maschine_jam_hid_write_report() - 2");
 }
 
-static int maschine_jam_midi_out_open(struct snd_rawmidi_substream *substream)
-{
+static int maschine_jam_midi_out_open(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_private_data *mj_private_data = substream->rmidi->private_data;
 
 	printk(KERN_ALERT "out_open() - 1");
@@ -134,8 +134,7 @@ static int maschine_jam_midi_out_open(struct snd_rawmidi_substream *substream)
 	return 0;
 }
 
-static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream)
-{
+static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_private_data *mj_private_data = substream->rmidi->private_data;
 
 	printk(KERN_ALERT "out_close() - 1");
@@ -150,8 +149,7 @@ static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream)
 }
 
 // get virtual midi data and transmit to physical maschine jam, cannot block
-static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substream, int up)
-{
+static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substream, int up){
 	unsigned long flags;
 	unsigned char data;
 	struct maschine_jam_private_data *mj_private_data = substream->rmidi->private_data;
@@ -180,21 +178,18 @@ static struct snd_rawmidi_ops maschine_jam_midi_out_ops = {
 };
 
 static __u8 *maschine_jam_report_fixup(struct hid_device *mj_hid_device, __u8 *rdesc,
-		unsigned int *rsize)
-{
+		unsigned int *rsize){
 	return rdesc;
 }
 
 static int maschine_jam_input_mapping(struct hid_device *mj_hid_device, struct hid_input *hi,
 		struct hid_field *field, struct hid_usage *usage,
-		unsigned long **bit, int *max)
-{
+		unsigned long **bit, int *max){
 	return 0;
 }
 
 static int maschine_jam_write_midi_note(struct maschine_jam_private_data *mj_private_data,
-	unsigned char status, unsigned char note, unsigned char velocity)
-{
+	unsigned char status, unsigned char note, unsigned char velocity){
 	int bytes_transmitted = 0;
 	unsigned long flags;
 	unsigned char buffer[3];
@@ -216,13 +211,19 @@ static int maschine_jam_write_midi_note(struct maschine_jam_private_data *mj_pri
 }
 
 static inline uint8_t maschine_jam_get_knob_nibble(u8 *data, uint8_t offset){
-	return (data[offset / 2] >> ((offset % 2) * 4)) && 0x0F;
+	return (data[offset / 2] >> ((offset % 2) * 4)) & 0x0F;
 }
 static inline void maschine_jam_set_knob_nibble(u8 *data, uint8_t offset, uint8_t value){
-	data[offset / 2] = (data[offset / 2] & (0x0F << ((offset % 2) * 4))) | (value & (0xF0 >> ((offset % 2) * 4)));
+	data[offset / 2] = (data[offset / 2] & (0xF0 >> ((offset % 2) * 4))) | (value & (0x0F << ((offset % 2) * 4)));
 }
 static inline uint8_t maschine_jam_get_button_bit(u8 *data, uint8_t offset){
 	return test_bit(offset % 8, (long unsigned int*)&data[offset / 8]);
+}
+static inline void maschine_jam_set_button_bit(u8 *data, uint8_t offset){
+	set_bit(offset % 8, (long unsigned int*)&data[offset / 8]);
+}
+static inline void maschine_jam_clear_button_bit(u8 *data, uint8_t offset){
+	clear_bit(offset % 8, (long unsigned int*)&data[offset / 8]);
 }
 static inline void maschine_jam_toggle_button_bit(u8 *data, uint8_t offset){
 	change_bit(offset % 8, (long unsigned int*)&data[offset / 8]);
@@ -234,70 +235,59 @@ static int maschine_jam_parse_report01(struct maschine_jam_private_data *mj_priv
 	unsigned int button_bit, knob_nibble, knobs_data_index, buttons_data_index;
 	uint8_t old_knob_value, new_knob_value, old_button_value, new_button_value;
 
-	printk(KERN_ALERT "report - %X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X", data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]);
+	printk(KERN_ALERT "report - %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X", data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]);
 
 	knobs_data_index = knobs_hid_field->report_offset / 8;
-	for (knob_nibble = 0; knob_nibble < knobs_hid_field->report_count; knob_nibble++){
+	for (knob_nibble = 0; knob_nibble < knobs_hid_field->report_count && knob_nibble < MASCHINE_JAM_NUMBER_KNOBS; knob_nibble++){
 		old_knob_value = maschine_jam_get_knob_nibble(mj_private_data->hid_report01_knobs, knob_nibble);
 		new_knob_value = maschine_jam_get_knob_nibble(&data[knobs_data_index], knob_nibble);
 		if (old_knob_value != new_knob_value){
+			printk(KERN_ALERT "knob_nibble: %d, old value: %d, new value: %d", knob_nibble, old_knob_value, new_knob_value);
 			return_value = maschine_jam_write_midi_note(mj_private_data, 0x90, mj_private_data->midi_in_knob_mapping[knob_nibble], new_knob_value * 0x04);
 			maschine_jam_set_knob_nibble(mj_private_data->hid_report01_knobs, knob_nibble, new_knob_value);
-			printk(KERN_ALERT "knob_nibble: %d, new value: %d", knob_nibble, new_knob_value);
 		}
 	}
 	buttons_data_index = buttons_hid_field->report_offset / 8;
-	for (button_bit = 0; button_bit < buttons_hid_field->report_count; button_bit++){
+	for (button_bit = 0; button_bit < buttons_hid_field->report_count && button_bit < MASCHINE_JAM_NUMBER_BUTTONS; button_bit++){
 		old_button_value = maschine_jam_get_button_bit(mj_private_data->hid_report01_buttons, button_bit);
 		new_button_value = maschine_jam_get_button_bit(&data[buttons_data_index], button_bit);
 		if (old_button_value != new_button_value){
+			printk(KERN_ALERT "button_bit: %d, old value: %d, new value: %d", button_bit, old_button_value, new_button_value);
 			maschine_jam_toggle_button_bit(mj_private_data->hid_report01_buttons, button_bit);
 			return_value = maschine_jam_write_midi_note(mj_private_data, 0x80 + (0x10 * new_button_value), mj_private_data->midi_in_button_mapping[button_bit], 0x40 * new_button_value);
-			printk(KERN_ALERT "button_bit: %d, new value: %d", button_bit, new_button_value);
 		}
 	}
 	return return_value;
 }
 
-static void maschine_jam_parse_report02(struct maschine_jam_private_data *mj_private_data, u8 *data, int size){
+static void maschine_jam_parse_report02(struct maschine_jam_private_data *mj_private_data, struct hid_report *report, u8 *data, int size){
 	int strip_byte;
 
+	printk(KERN_ALERT "report - %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",
+	data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16],
+	data[17], data[18], data[19], data[20], data[21], data[22], data[23], data[24], data[25], data[26], data[27], data[28], data[29], data[30], data[31], data[32], data[33],
+	data[34], data[35], data[36], data[37], data[38], data[39], data[40], data[41], data[42], data[43], data[44], data[45], data[46], data[47], data[48]);
 	for (strip_byte=0; (strip_byte*6)+1<size; strip_byte++){
-		if (mj_private_data->hid_report0x02[strip_byte] != data[strip_byte]){
+		if (mj_private_data->hid_report02_smartstrips[strip_byte] != data[strip_byte]){
 			maschine_jam_write_midi_note(mj_private_data, 0x90, mj_private_data->midi_in_strip_byte_mapping[strip_byte], data[strip_byte]);
-			mj_private_data->hid_report0x02[strip_byte] = data[strip_byte];
+			mj_private_data->hid_report02_smartstrips[strip_byte] = data[strip_byte];
 		}
-		if (mj_private_data->hid_report0x02[strip_byte+1] != data[strip_byte+1]){
+		if (mj_private_data->hid_report02_smartstrips[strip_byte+1] != data[strip_byte+1]){
 			maschine_jam_write_midi_note(mj_private_data, 0x90, mj_private_data->midi_in_strip_byte_mapping[strip_byte], data[strip_byte+1]);
-			mj_private_data->hid_report0x02[strip_byte+1] = data[strip_byte+1];
+			mj_private_data->hid_report02_smartstrips[strip_byte+1] = data[strip_byte+1];
 		}
 	}
 }
 
-static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_report *report, u8 *data, int size)
-{
+static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_report *report, u8 *data, int size){
 	int return_value = 0;
-	int i;
 	struct maschine_jam *mj = hid_get_drvdata(mj_hid_device);
 
-	printk(KERN_ALERT "maschine_jam_raw_event() - report->id %d", report->id);
-	printk(KERN_ALERT "maschine_jam_raw_event() - report->maxfield %d", report->maxfield);
-	for (i=0; i<report->maxfield; i++){
-		printk(KERN_ALERT "maschine_jam_raw_event() - report->field[%d]->report_offset %d", i, report->field[i]->report_offset);
-		printk(KERN_ALERT "maschine_jam_raw_event() - report->field[%d]->report_size %d", i, report->field[i]->report_size);
-		printk(KERN_ALERT "maschine_jam_raw_event() - report->field[%d]->report_count %d", i, report->field[i]->report_count);
-		printk(KERN_ALERT "maschine_jam_raw_event() - report->field[%d]->report_type %d", i, report->field[i]->report_type);
-	}
-	printk(KERN_ALERT "maschine_jam_raw_event() - size %d", size);
 	if (report != NULL && data != NULL && report->id == data[0]){
 		if (report->id == 0x01 && size == 17){
 			maschine_jam_parse_report01(mj->mj_private_data, report, &data[1], 16);
 		} else if (report->id == 0x02 && size == 49){
-			printk(KERN_ALERT "report - %X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X%X",
-			data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16],
-			data[17], data[18], data[19], data[20], data[21], data[22], data[23], data[24], data[25], data[26], data[27], data[28], data[29], data[30], data[31], data[32], data[33],
-			data[34], data[35], data[36], data[37], data[38], data[39], data[40], data[41], data[42], data[43], data[44], data[45], data[46], data[47], data[48]);
-			maschine_jam_parse_report02(mj->mj_private_data, data, size);
+			maschine_jam_parse_report02(mj->mj_private_data, report, data, size);
 		} else {
 			printk(KERN_ALERT "maschine_jam_raw_event() - report id is unknown or bad data size");
 		}
@@ -307,17 +297,22 @@ static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_r
 	return return_value;
 }
 
-static int maschine_jam_snd_dev_free(struct snd_device *dev)
-{
+static int maschine_jam_snd_dev_free(struct snd_device *dev){
 	return 0;
 }
 
+typedef enum maschine_jam_io_attribute_type_e {
+	IO_ATTRIBUTE_KNOB,
+	IO_ATTRIBUTE_BUTTON,
+	IO_ATTRIBUTE_SMARTSTRIP,
+} maschine_jam_io_attribute_type;
 struct maschine_jam_io_attribute {
 	struct kobj_attribute mapping_attribute;
 	struct kobj_attribute status_attribute;
+	maschine_jam_io_attribute_type io_attribute_type;
 	uint8_t io_index;
 };
-static ssize_t maschine_jam_inputs_button_mapping_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
+static ssize_t maschine_jam_inputs_mapping_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
 	struct kobject *maschine_jam_inputs_button_dir = kobj;
 	struct kobject *maschine_jam_inputs_dir = maschine_jam_inputs_button_dir->parent;
 	struct kobject *maschine_jam_kobj = maschine_jam_inputs_dir->parent;
@@ -326,9 +321,15 @@ static ssize_t maschine_jam_inputs_button_mapping_show(struct kobject *kobj, str
 	struct maschine_jam *mj = hid_get_drvdata(hdev);
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, mapping_attribute);
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", mj->mj_private_data->midi_in_button_mapping[io_attribute->io_index]);
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+		return scnprintf(buf, PAGE_SIZE, "%d\n", mj->mj_private_data->midi_in_knob_mapping[io_attribute->io_index]);
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+		return scnprintf(buf, PAGE_SIZE, "%d\n", mj->mj_private_data->midi_in_button_mapping[io_attribute->io_index]);
+	} else {
+		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
+	}
 }
-static ssize_t maschine_jam_inputs_button_mapping_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count){
+static ssize_t maschine_jam_inputs_mapping_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count){
 	unsigned int store_value;
 	struct kobject *maschine_jam_inputs_button_dir = kobj;
 	struct kobject *maschine_jam_inputs_dir = maschine_jam_inputs_button_dir->parent;
@@ -339,47 +340,96 @@ static ssize_t maschine_jam_inputs_button_mapping_store(struct kobject *kobj, st
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, mapping_attribute);
 
 	sscanf(buf, "%u", &store_value);
-	mj->mj_private_data->midi_in_button_mapping[io_attribute->io_index] = store_value & 0xFF;
-
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+		mj->mj_private_data->midi_in_knob_mapping[io_attribute->io_index] = store_value & 0xFF;
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+		mj->mj_private_data->midi_in_button_mapping[io_attribute->io_index] = store_value & 0xFF;
+	}
 	return count;
 }
-static ssize_t maschine_jam_inputs_button_status_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
-	// struct kobject *maschine_jam_inputs_button_dir = kobj;
-	// struct kobject *maschine_jam_inputs_dir = maschine_jam_inputs_button_dir->parent;
-	// struct kobject *maschine_jam_kobj = maschine_jam_inputs_dir->parent;
-	// struct device *dev = container_of(maschine_jam_kobj, struct device, kobj);
-	// struct hid_device *hdev = container_of(dev, struct hid_device, dev);
-	// struct maschine_jam *mj = hid_get_drvdata(hdev);
-	// struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, mapping_attribute);
+static ssize_t maschine_jam_inputs_status_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
+	 struct kobject *maschine_jam_inputs_button_dir = kobj;
+	 struct kobject *maschine_jam_inputs_dir = maschine_jam_inputs_button_dir->parent;
+	 struct kobject *maschine_jam_kobj = maschine_jam_inputs_dir->parent;
+	 struct device *dev = container_of(maschine_jam_kobj, struct device, kobj);
+	 struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+	 struct maschine_jam *mj = hid_get_drvdata(hdev);
+	 struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, status_attribute);
 
-	// STUBBED
-	return scnprintf(buf, PAGE_SIZE, "\n");
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+		return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_knob_nibble(mj->mj_private_data->hid_report01_knobs, io_attribute->io_index));
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+		return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_button_bit(mj->mj_private_data->hid_report01_buttons, io_attribute->io_index));
+	} else {
+		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
+	}
 }
-static ssize_t maschine_jam_inputs_button_status_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count){
-	// unsigned int store_value;
-	// struct kobject *maschine_jam_inputs_button_dir = kobj;
-	// struct kobject *maschine_jam_inputs_dir = maschine_jam_inputs_button_dir->parent;
-	// struct kobject *maschine_jam_kobj = maschine_jam_inputs_dir->parent;
-	// struct device *dev = container_of(maschine_jam_kobj, struct device, kobj);
-	// struct hid_device *hdev = container_of(dev, struct hid_device, dev);
-	// struct maschine_jam *mj = hid_get_drvdata(hdev);
-	// struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, mapping_attribute);
+static ssize_t maschine_jam_inputs_status_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count){
+	 unsigned int store_value;
+	 struct kobject *maschine_jam_inputs_button_dir = kobj;
+	 struct kobject *maschine_jam_inputs_dir = maschine_jam_inputs_button_dir->parent;
+	 struct kobject *maschine_jam_kobj = maschine_jam_inputs_dir->parent;
+	 struct device *dev = container_of(maschine_jam_kobj, struct device, kobj);
+	 struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+	 struct maschine_jam *mj = hid_get_drvdata(hdev);
+	 struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, status_attribute);
 
-	// STUBBED
+	sscanf(buf, "%u", &store_value);
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+		maschine_jam_set_knob_nibble(mj->mj_private_data->hid_report01_knobs, io_attribute->io_index, store_value & 0x0F);
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+		if (store_value == 0){
+			maschine_jam_clear_button_bit(mj->mj_private_data->hid_report01_buttons, io_attribute->io_index);
+		} else {
+			maschine_jam_set_button_bit(mj->mj_private_data->hid_report01_buttons, io_attribute->io_index);
+		}
+	}
 	return count;
 }
+#define MJ_INPUTS_KNOB_ATTRIBUTE_GROUP(_name, _index) \
+	struct maschine_jam_io_attribute maschine_jam_inputs_button_ ## _name ## _attribute = { \
+		.mapping_attribute = { \
+		 	.attr = {.name = "mapping", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+		 	.show = maschine_jam_inputs_mapping_show, \
+		 	.store = maschine_jam_inputs_mapping_store, \
+		}, \
+		.status_attribute = { \
+		 	.attr = {.name = "status", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+		 	.show = maschine_jam_inputs_status_show, \
+		 	.store = maschine_jam_inputs_status_store, \
+		}, \
+		.io_attribute_type = IO_ATTRIBUTE_KNOB, \
+		.io_index = _index, \
+	}; \
+	static struct attribute *maschine_jam_inputs_knob_ ## _name ## _attributes[] = { \
+		&maschine_jam_inputs_button_ ## _name ## _attribute.mapping_attribute.attr, \
+		&maschine_jam_inputs_button_ ## _name ## _attribute.status_attribute.attr, \
+		NULL \
+	}; \
+	static const struct attribute_group maschine_jam_inputs_knob_ ## _name ## _group = { \
+		.name = #_name, \
+		.attrs = maschine_jam_inputs_knob_ ## _name ## _attributes, \
+	}
+MJ_INPUTS_KNOB_ATTRIBUTE_GROUP(encoder, 0);
+//MJ_INPUTS_KNOB_ATTRIBUTE_GROUP(unknown_knob, 1);
+static const struct attribute_group *maschine_jam_inputs_knob_groups[] = {
+	&maschine_jam_inputs_knob_encoder_group,
+	//&maschine_jam_inputs_knob_unknown_knob_group,
+	NULL
+};
 #define MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(_name, _index) \
 	struct maschine_jam_io_attribute maschine_jam_inputs_button_ ## _name ## _attribute = { \
 		.mapping_attribute = { \
-		 	.attr = {.name = "mapping", .mode = VERIFY_OCTAL_PERMISSIONS(0644)}, \
-		 	.show = maschine_jam_inputs_button_mapping_show, \
-		 	.store = maschine_jam_inputs_button_mapping_store, \
+		 	.attr = {.name = "mapping", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+		 	.show = maschine_jam_inputs_mapping_show, \
+		 	.store = maschine_jam_inputs_mapping_store, \
 		}, \
 		.status_attribute = { \
-		 	.attr = {.name = "status", .mode = VERIFY_OCTAL_PERMISSIONS(0644)}, \
-		 	.show = maschine_jam_inputs_button_status_show, \
-		 	.store = maschine_jam_inputs_button_status_store, \
+		 	.attr = {.name = "status", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+		 	.show = maschine_jam_inputs_status_show, \
+		 	.store = maschine_jam_inputs_status_store, \
 		}, \
+		.io_attribute_type = IO_ATTRIBUTE_BUTTON, \
 		.io_index = _index, \
 	}; \
 	static struct attribute *maschine_jam_inputs_button_ ## _name ## _attributes[] = { \
@@ -391,270 +441,255 @@ static ssize_t maschine_jam_inputs_button_status_store(struct kobject *kobj, str
 		.name = #_name, \
 		.attrs = maschine_jam_inputs_button_ ## _name ## _attributes, \
 	}
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(000 ,0);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(001 ,1);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(002 ,2);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(003 ,3);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(004 ,4);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(005 ,5);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(006 ,6);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(007 ,7);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(008 ,8);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(009 ,9);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(010 ,10);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(011 ,11);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(012 ,12);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(013 ,13);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(014 ,14);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(015 ,15);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(016 ,16);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(017 ,17);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(018 ,18);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(019 ,19);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(020 ,20);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(021 ,21);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(022 ,22);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(023 ,23);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(024 ,24);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(025 ,25);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(026 ,26);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(027 ,27);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(028 ,28);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(029 ,29);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(030 ,30);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(031 ,31);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(032 ,32);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(033 ,33);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(034 ,34);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(035 ,35);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(036 ,36);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(037 ,37);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(038 ,38);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(039 ,39);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(040 ,40);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(041 ,41);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(042 ,42);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(043 ,43);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(044 ,44);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(045 ,45);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(046 ,46);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(047 ,47);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(048 ,48);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(049 ,49);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(050 ,50);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(051 ,51);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(052 ,52);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(053 ,53);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(054 ,54);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(055 ,55);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(056 ,56);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(057 ,57);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(058 ,58);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(059 ,59);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(060 ,60);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(061 ,61);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(062 ,62);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(063 ,63);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(064 ,64);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(065 ,65);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(066 ,66);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(067 ,67);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(068 ,68);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(069 ,69);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(070 ,70);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(071 ,71);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(072 ,72);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(073 ,73);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(074 ,74);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(075 ,75);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(076 ,76);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(077 ,77);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(078 ,78);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(079 ,79);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(080 ,80);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(081 ,81);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(082 ,82);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(083 ,83);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(084 ,84);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(085 ,85);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(086 ,86);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(087 ,87);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(088 ,88);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(089 ,89);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(090 ,90);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(091 ,91);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(092 ,92);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(093 ,93);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(094 ,94);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(095 ,95);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(096 ,96);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(097 ,97);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(098 ,98);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(099 ,99);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(100 ,100);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(101 ,101);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(102 ,102);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(103 ,103);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(104 ,104);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(105 ,105);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(106 ,106);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(107 ,107);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(108 ,108);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(109 ,109);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(110 ,110);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(111 ,111);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(112 ,112);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(113 ,113);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(114 ,114);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(115 ,115);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(116 ,116);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(117 ,117);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(118 ,118);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(119 ,119);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(120 ,120);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(121 ,121);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(122 ,122);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(123 ,123);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(124 ,124);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(125 ,125);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(126 ,126);
-MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(127 ,127);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(song, 0);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(scene_1, 1);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(scene_2, 2);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(scene_3, 3);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(scene_4, 4);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(scene_5, 5);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(scene_6, 6);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(scene_7, 7);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(scene_8, 8);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(step, 9);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(pad_mode, 10);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(clear, 11);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(duplicate, 12);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(dpad_up, 13);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(dpad_left, 14);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(dpad_right, 15);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(dpad_down, 16);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(note_repeat, 17);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x1, 18);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x2, 19);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x3, 20);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x4, 21);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x5, 22);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x6, 23);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x7, 24);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x8, 25);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x1, 26);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x2, 27);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x3, 28);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x4, 29);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x5, 30);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x6, 31);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x7, 32);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x8, 33);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x1, 34);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x2, 35);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x3, 36);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x4, 37);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x5, 38);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x6, 39);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x7, 40);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x8, 41);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x1, 42);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x2, 43);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x3, 44);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x4, 45);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x5, 46);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x6, 47);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x7, 48);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x8, 49);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x1, 50);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x2, 51);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x3, 52);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x4, 53);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x5, 54);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x6, 55);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x7, 56);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x8, 57);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x1, 58);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x2, 59);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x3, 60);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x4, 61);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x5, 62);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x6, 63);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x7, 64);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x8, 65);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x1, 66);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x2, 67);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x3, 68);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x4, 69);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x5, 70);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x6, 71);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x7, 72);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x8, 73);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x1, 74);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x2, 75);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x3, 76);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x4, 77);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x5, 78);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x6, 79);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x7, 80);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x8, 81);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(group_a, 82);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(group_b, 83);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(group_c, 84);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(group_d, 85);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(group_e, 86);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(group_f, 87);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(group_g, 88);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(group_h, 89);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(mst, 90);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(grp, 91);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(in_1, 92);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(cue, 93);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(browse, 94);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(macro, 95);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(level, 96);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(aux, 97);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(control, 98);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(auto, 99);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(perform, 100);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(notes, 101);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(lock, 102);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(tune, 103);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(swing, 104);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(shift, 105);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(play, 106);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(rec, 107);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(page_left, 108);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(page_right, 109);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(tempo, 110);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(grid, 111);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(solo, 112);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(mute, 113);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(select, 114);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(encoder_touch, 115);
+MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(encoder_push, 116);
+//MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(unknown_117, 117);
+//MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(unknown_118, 118);
+//MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(unknown_119, 119);
 
-static const struct attribute_group *maschine_jam_inputs_buttons_groups[] = {
-	&maschine_jam_inputs_button_000_group,
-	&maschine_jam_inputs_button_001_group,
-	&maschine_jam_inputs_button_002_group,
-	&maschine_jam_inputs_button_003_group,
-	&maschine_jam_inputs_button_004_group,
-	&maschine_jam_inputs_button_005_group,
-	&maschine_jam_inputs_button_006_group,
-	&maschine_jam_inputs_button_007_group,
-	&maschine_jam_inputs_button_008_group,
-	&maschine_jam_inputs_button_009_group,
-	&maschine_jam_inputs_button_010_group,
-	&maschine_jam_inputs_button_011_group,
-	&maschine_jam_inputs_button_012_group,
-	&maschine_jam_inputs_button_013_group,
-	&maschine_jam_inputs_button_014_group,
-	&maschine_jam_inputs_button_015_group,
-	&maschine_jam_inputs_button_016_group,
-	&maschine_jam_inputs_button_017_group,
-	&maschine_jam_inputs_button_018_group,
-	&maschine_jam_inputs_button_019_group,
-	&maschine_jam_inputs_button_020_group,
-	&maschine_jam_inputs_button_021_group,
-	&maschine_jam_inputs_button_022_group,
-	&maschine_jam_inputs_button_023_group,
-	&maschine_jam_inputs_button_024_group,
-	&maschine_jam_inputs_button_025_group,
-	&maschine_jam_inputs_button_026_group,
-	&maschine_jam_inputs_button_027_group,
-	&maschine_jam_inputs_button_028_group,
-	&maschine_jam_inputs_button_029_group,
-	&maschine_jam_inputs_button_030_group,
-	&maschine_jam_inputs_button_031_group,
-	&maschine_jam_inputs_button_032_group,
-	&maschine_jam_inputs_button_033_group,
-	&maschine_jam_inputs_button_034_group,
-	&maschine_jam_inputs_button_035_group,
-	&maschine_jam_inputs_button_036_group,
-	&maschine_jam_inputs_button_037_group,
-	&maschine_jam_inputs_button_038_group,
-	&maschine_jam_inputs_button_039_group,
-	&maschine_jam_inputs_button_040_group,
-	&maschine_jam_inputs_button_041_group,
-	&maschine_jam_inputs_button_042_group,
-	&maschine_jam_inputs_button_043_group,
-	&maschine_jam_inputs_button_044_group,
-	&maschine_jam_inputs_button_045_group,
-	&maschine_jam_inputs_button_046_group,
-	&maschine_jam_inputs_button_047_group,
-	&maschine_jam_inputs_button_048_group,
-	&maschine_jam_inputs_button_049_group,
-	&maschine_jam_inputs_button_050_group,
-	&maschine_jam_inputs_button_051_group,
-	&maschine_jam_inputs_button_052_group,
-	&maschine_jam_inputs_button_053_group,
-	&maschine_jam_inputs_button_054_group,
-	&maschine_jam_inputs_button_055_group,
-	&maschine_jam_inputs_button_056_group,
-	&maschine_jam_inputs_button_057_group,
-	&maschine_jam_inputs_button_058_group,
-	&maschine_jam_inputs_button_059_group,
-	&maschine_jam_inputs_button_060_group,
-	&maschine_jam_inputs_button_061_group,
-	&maschine_jam_inputs_button_062_group,
-	&maschine_jam_inputs_button_063_group,
-	&maschine_jam_inputs_button_064_group,
-	&maschine_jam_inputs_button_065_group,
-	&maschine_jam_inputs_button_066_group,
-	&maschine_jam_inputs_button_067_group,
-	&maschine_jam_inputs_button_068_group,
-	&maschine_jam_inputs_button_069_group,
-	&maschine_jam_inputs_button_070_group,
-	&maschine_jam_inputs_button_071_group,
-	&maschine_jam_inputs_button_072_group,
-	&maschine_jam_inputs_button_073_group,
-	&maschine_jam_inputs_button_074_group,
-	&maschine_jam_inputs_button_075_group,
-	&maschine_jam_inputs_button_076_group,
-	&maschine_jam_inputs_button_077_group,
-	&maschine_jam_inputs_button_078_group,
-	&maschine_jam_inputs_button_079_group,
-	&maschine_jam_inputs_button_080_group,
-	&maschine_jam_inputs_button_081_group,
-	&maschine_jam_inputs_button_082_group,
-	&maschine_jam_inputs_button_083_group,
-	&maschine_jam_inputs_button_084_group,
-	&maschine_jam_inputs_button_085_group,
-	&maschine_jam_inputs_button_086_group,
-	&maschine_jam_inputs_button_087_group,
-	&maschine_jam_inputs_button_088_group,
-	&maschine_jam_inputs_button_089_group,
-	&maschine_jam_inputs_button_090_group,
-	&maschine_jam_inputs_button_091_group,
-	&maschine_jam_inputs_button_092_group,
-	&maschine_jam_inputs_button_093_group,
-	&maschine_jam_inputs_button_094_group,
-	&maschine_jam_inputs_button_095_group,
-	&maschine_jam_inputs_button_096_group,
-	&maschine_jam_inputs_button_097_group,
-	&maschine_jam_inputs_button_098_group,
-	&maschine_jam_inputs_button_099_group,
-	&maschine_jam_inputs_button_100_group,
-	&maschine_jam_inputs_button_101_group,
-	&maschine_jam_inputs_button_102_group,
-	&maschine_jam_inputs_button_103_group,
-	&maschine_jam_inputs_button_104_group,
-	&maschine_jam_inputs_button_105_group,
-	&maschine_jam_inputs_button_106_group,
-	&maschine_jam_inputs_button_107_group,
-	&maschine_jam_inputs_button_108_group,
-	&maschine_jam_inputs_button_109_group,
-	&maschine_jam_inputs_button_110_group,
-	&maschine_jam_inputs_button_111_group,
-	&maschine_jam_inputs_button_112_group,
-	&maschine_jam_inputs_button_113_group,
-	&maschine_jam_inputs_button_114_group,
-	&maschine_jam_inputs_button_115_group,
-	&maschine_jam_inputs_button_116_group,
-	&maschine_jam_inputs_button_117_group,
-	&maschine_jam_inputs_button_118_group,
-	&maschine_jam_inputs_button_119_group,
-	&maschine_jam_inputs_button_120_group,
-	&maschine_jam_inputs_button_121_group,
-	&maschine_jam_inputs_button_122_group,
-	&maschine_jam_inputs_button_123_group,
-	&maschine_jam_inputs_button_124_group,
-	&maschine_jam_inputs_button_125_group,
-	&maschine_jam_inputs_button_126_group,
-	&maschine_jam_inputs_button_127_group,
+static const struct attribute_group *maschine_jam_inputs_button_groups[] = {
+	&maschine_jam_inputs_button_song_group,
+	&maschine_jam_inputs_button_scene_1_group,
+	&maschine_jam_inputs_button_scene_2_group,
+	&maschine_jam_inputs_button_scene_3_group,
+	&maschine_jam_inputs_button_scene_4_group,
+	&maschine_jam_inputs_button_scene_5_group,
+	&maschine_jam_inputs_button_scene_6_group,
+	&maschine_jam_inputs_button_scene_7_group,
+	&maschine_jam_inputs_button_scene_8_group,
+	&maschine_jam_inputs_button_step_group,
+	&maschine_jam_inputs_button_pad_mode_group,
+	&maschine_jam_inputs_button_clear_group,
+	&maschine_jam_inputs_button_duplicate_group,
+	&maschine_jam_inputs_button_dpad_up_group,
+	&maschine_jam_inputs_button_dpad_left_group,
+	&maschine_jam_inputs_button_dpad_right_group,
+	&maschine_jam_inputs_button_dpad_down_group,
+	&maschine_jam_inputs_button_note_repeat_group,
+	&maschine_jam_inputs_button_matrix_1x1_group,
+	&maschine_jam_inputs_button_matrix_1x2_group,
+	&maschine_jam_inputs_button_matrix_1x3_group,
+	&maschine_jam_inputs_button_matrix_1x4_group,
+	&maschine_jam_inputs_button_matrix_1x5_group,
+	&maschine_jam_inputs_button_matrix_1x6_group,
+	&maschine_jam_inputs_button_matrix_1x7_group,
+	&maschine_jam_inputs_button_matrix_1x8_group,
+	&maschine_jam_inputs_button_matrix_2x1_group,
+	&maschine_jam_inputs_button_matrix_2x2_group,
+	&maschine_jam_inputs_button_matrix_2x3_group,
+	&maschine_jam_inputs_button_matrix_2x4_group,
+	&maschine_jam_inputs_button_matrix_2x5_group,
+	&maschine_jam_inputs_button_matrix_2x6_group,
+	&maschine_jam_inputs_button_matrix_2x7_group,
+	&maschine_jam_inputs_button_matrix_2x8_group,
+	&maschine_jam_inputs_button_matrix_3x1_group,
+	&maschine_jam_inputs_button_matrix_3x2_group,
+	&maschine_jam_inputs_button_matrix_3x3_group,
+	&maschine_jam_inputs_button_matrix_3x4_group,
+	&maschine_jam_inputs_button_matrix_3x5_group,
+	&maschine_jam_inputs_button_matrix_3x6_group,
+	&maschine_jam_inputs_button_matrix_3x7_group,
+	&maschine_jam_inputs_button_matrix_3x8_group,
+	&maschine_jam_inputs_button_matrix_4x1_group,
+	&maschine_jam_inputs_button_matrix_4x2_group,
+	&maschine_jam_inputs_button_matrix_4x3_group,
+	&maschine_jam_inputs_button_matrix_4x4_group,
+	&maschine_jam_inputs_button_matrix_4x5_group,
+	&maschine_jam_inputs_button_matrix_4x6_group,
+	&maschine_jam_inputs_button_matrix_4x7_group,
+	&maschine_jam_inputs_button_matrix_4x8_group,
+	&maschine_jam_inputs_button_matrix_5x1_group,
+	&maschine_jam_inputs_button_matrix_5x2_group,
+	&maschine_jam_inputs_button_matrix_5x3_group,
+	&maschine_jam_inputs_button_matrix_5x4_group,
+	&maschine_jam_inputs_button_matrix_5x5_group,
+	&maschine_jam_inputs_button_matrix_5x6_group,
+	&maschine_jam_inputs_button_matrix_5x7_group,
+	&maschine_jam_inputs_button_matrix_5x8_group,
+	&maschine_jam_inputs_button_matrix_6x1_group,
+	&maschine_jam_inputs_button_matrix_6x2_group,
+	&maschine_jam_inputs_button_matrix_6x3_group,
+	&maschine_jam_inputs_button_matrix_6x4_group,
+	&maschine_jam_inputs_button_matrix_6x5_group,
+	&maschine_jam_inputs_button_matrix_6x6_group,
+	&maschine_jam_inputs_button_matrix_6x7_group,
+	&maschine_jam_inputs_button_matrix_6x8_group,
+	&maschine_jam_inputs_button_matrix_7x1_group,
+	&maschine_jam_inputs_button_matrix_7x2_group,
+	&maschine_jam_inputs_button_matrix_7x3_group,
+	&maschine_jam_inputs_button_matrix_7x4_group,
+	&maschine_jam_inputs_button_matrix_7x5_group,
+	&maschine_jam_inputs_button_matrix_7x6_group,
+	&maschine_jam_inputs_button_matrix_7x7_group,
+	&maschine_jam_inputs_button_matrix_7x8_group,
+	&maschine_jam_inputs_button_matrix_8x1_group,
+	&maschine_jam_inputs_button_matrix_8x2_group,
+	&maschine_jam_inputs_button_matrix_8x3_group,
+	&maschine_jam_inputs_button_matrix_8x4_group,
+	&maschine_jam_inputs_button_matrix_8x5_group,
+	&maschine_jam_inputs_button_matrix_8x6_group,
+	&maschine_jam_inputs_button_matrix_8x7_group,
+	&maschine_jam_inputs_button_matrix_8x8_group,
+	&maschine_jam_inputs_button_group_a_group,
+	&maschine_jam_inputs_button_group_b_group,
+	&maschine_jam_inputs_button_group_c_group,
+	&maschine_jam_inputs_button_group_d_group,
+	&maschine_jam_inputs_button_group_e_group,
+	&maschine_jam_inputs_button_group_f_group,
+	&maschine_jam_inputs_button_group_g_group,
+	&maschine_jam_inputs_button_group_h_group,
+	&maschine_jam_inputs_button_mst_group,
+	&maschine_jam_inputs_button_grp_group,
+	&maschine_jam_inputs_button_in_1_group,
+	&maschine_jam_inputs_button_cue_group,
+	&maschine_jam_inputs_button_browse_group,
+	&maschine_jam_inputs_button_macro_group,
+	&maschine_jam_inputs_button_level_group,
+	&maschine_jam_inputs_button_aux_group,
+	&maschine_jam_inputs_button_control_group,
+	&maschine_jam_inputs_button_auto_group,
+	&maschine_jam_inputs_button_perform_group,
+	&maschine_jam_inputs_button_notes_group,
+	&maschine_jam_inputs_button_lock_group,
+	&maschine_jam_inputs_button_tune_group,
+	&maschine_jam_inputs_button_swing_group,
+	&maschine_jam_inputs_button_shift_group,
+	&maschine_jam_inputs_button_play_group,
+	&maschine_jam_inputs_button_rec_group,
+	&maschine_jam_inputs_button_page_left_group,
+	&maschine_jam_inputs_button_page_right_group,
+	&maschine_jam_inputs_button_tempo_group,
+	&maschine_jam_inputs_button_grid_group,
+	&maschine_jam_inputs_button_solo_group,
+	&maschine_jam_inputs_button_mute_group,
+	&maschine_jam_inputs_button_select_group,
+	&maschine_jam_inputs_button_encoder_touch_group,
+	&maschine_jam_inputs_button_encoder_push_group,
+	//&maschine_jam_inputs_button_unknown_117_group,
+	//&maschine_jam_inputs_button_unknown_118_group,
+	//&maschine_jam_inputs_button_unknown_119_group,
 	NULL
 };
 
 static int maschine_jam_private_data_initialize_sysfs(struct kobject* device_kobject){
 	int err = 0;
 	struct kobject* directory_inputs = NULL;
+	struct kobject* directory_inputs_knobs = NULL;
 	struct kobject* directory_inputs_buttons = NULL;
 	struct kobject* directory_inputs_smartstrips = NULL;
 	struct kobject* directory_outputs = NULL;
@@ -666,11 +701,19 @@ static int maschine_jam_private_data_initialize_sysfs(struct kobject* device_kob
 	if (directory_inputs == NULL) {
 		printk(KERN_ALERT "kobject_create_and_add failed!");
 	}
+	directory_inputs_knobs = kobject_create_and_add("knobs", directory_inputs);
+	if (directory_inputs_buttons == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add failed!");
+	}
+	err = sysfs_create_groups(directory_inputs_knobs, maschine_jam_inputs_knob_groups);
+	if (err < 0) {
+		printk(KERN_ALERT "device_create_file failed!");
+	}
 	directory_inputs_buttons = kobject_create_and_add("buttons", directory_inputs);
 	if (directory_inputs_buttons == NULL) {
 		printk(KERN_ALERT "kobject_create_and_add failed!");
 	}
-	err = sysfs_create_groups(directory_inputs_buttons, maschine_jam_inputs_buttons_groups);
+	err = sysfs_create_groups(directory_inputs_buttons, maschine_jam_inputs_button_groups);
 	if (err < 0) {
 		printk(KERN_ALERT "device_create_file failed!");
 	}
@@ -697,8 +740,7 @@ static int maschine_jam_private_data_initialize_sysfs(struct kobject* device_kob
 	return err;
 }
 
-static int maschine_jam_private_data_initialize(struct maschine_jam_private_data *mj_private_data)
-{
+static int maschine_jam_private_data_initialize(struct maschine_jam_private_data *mj_private_data){
 	static int dev;
 	struct snd_card *card;
 	struct snd_rawmidi *rawmidi;
@@ -712,11 +754,11 @@ static int maschine_jam_private_data_initialize(struct maschine_jam_private_data
 	// TODO validate hid fields from some report
 
 	// Initialize midi_in button mapping
-	for(i=0; i<sizeof(mj_private_data->midi_in_button_mapping)/sizeof(mj_private_data->midi_in_button_mapping[0]); i++){
-		mj_private_data->midi_in_button_mapping[i] = i;
-	}
-	for(i=0; i<sizeof(mj_private_data->midi_in_knob_mapping)/sizeof(mj_private_data->midi_in_knob_mapping[0]); i++){
+	for(i = 0; i < MASCHINE_JAM_NUMBER_KNOBS; i++){
 		mj_private_data->midi_in_knob_mapping[i] = i;
+	}
+	for(i = 0; i < MASCHINE_JAM_NUMBER_BUTTONS; i++){
+		mj_private_data->midi_in_button_mapping[i] = i + MASCHINE_JAM_NUMBER_KNOBS;
 	}
 	maschine_jam_private_data_initialize_sysfs(&mj_private_data->mj->mj_hid_device->dev.kobj);
 
@@ -811,8 +853,7 @@ fail:
 	return err;
 }
 
-static int maschine_jam_private_data_deinitialize(struct maschine_jam_private_data *mj_private_data)
-{
+static int maschine_jam_private_data_deinitialize(struct maschine_jam_private_data *mj_private_data){
 	if (mj_private_data->card) {
 		snd_card_disconnect(mj_private_data->card);
 		snd_card_free_when_closed(mj_private_data->card);
@@ -821,8 +862,7 @@ static int maschine_jam_private_data_deinitialize(struct maschine_jam_private_da
 	return 0;
 }
 
-static int maschine_jam_probe(struct hid_device *mj_hid_device, const struct hid_device_id *id)
-{
+static int maschine_jam_probe(struct hid_device *mj_hid_device, const struct hid_device_id *id){
 	int ret;
 	struct usb_interface *intface = to_usb_interface(mj_hid_device->dev.parent);
 	unsigned short interface_number = intface->cur_altsetting->desc.bInterfaceNumber;
@@ -892,8 +932,7 @@ err_free_mj_dev:
 	return ret;
 }
 
-static void maschine_jam_remove(struct hid_device *mj_hid_device)
-{
+static void maschine_jam_remove(struct hid_device *mj_hid_device){
 	struct maschine_jam *mj = hid_get_drvdata(mj_hid_device);
 	struct maschine_jam_private_data *mj_private_data = mj->mj_private_data;
 
