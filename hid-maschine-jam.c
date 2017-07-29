@@ -23,23 +23,22 @@
 
 struct maschine_jam_driver_data {
 	// Device Information
-	struct hid_device *mj_hid_device;
-	unsigned short			interface_number;
-	
+	struct hid_device 		*mj_hid_device;
+
 	// Inputs
 	uint8_t					midi_in_knob_mapping[MASCHINE_JAM_NUMBER_KNOBS];
 	uint8_t					hid_report01_knobs[MASCHINE_JAM_HID_REPORT_01_KNOBS_BYTES];
 	uint8_t					midi_in_button_mapping[MASCHINE_JAM_NUMBER_BUTTONS];
 	uint8_t					hid_report01_buttons[MASCHINE_JAM_HID_REPORT_01_BUTTONS_BYTES];
-	uint8_t					midi_in_strip_byte_mapping[MASCHINE_JAM_NUMBER_SMARTSTRIPS];
+	uint8_t					midi_in_smartstrip_mapping[MASCHINE_JAM_NUMBER_SMARTSTRIPS];
 	uint8_t					hid_report02_smartstrips[MASCHINE_JAM_HID_REPORT_02_SMARTSTRIPS_BYTES];
-	
+
 	// Outputs
 	uint8_t					midi_out_led_buttons_mapping[120];
 	uint8_t					hid_report_led_buttons_1[37];
 	uint8_t					hid_report_led_buttons_2[16];
 	spinlock_t				hid_report_led_buttons_lock;
-	struct work_struct		hid_report_led_buttons_work;
+	struct work_struct		hid_report_led_buttons_work;  
 	uint8_t					midi_out_led_pads_mapping[120];
 	uint8_t					hid_report_led_pads[80];
 	spinlock_t				hid_report_led_pads_lock;
@@ -49,10 +48,11 @@ struct maschine_jam_driver_data {
 	spinlock_t				hid_report_led_strips_lock;
 	struct work_struct		hid_report_led_strips_work;
 	struct work_struct		hid_report_write_report_work;
-	
-	// Midi Interface
-	struct snd_card			*card;
-	struct snd_rawmidi		*rawmidi;
+
+	// Sound/Midi Interface
+	struct snd_card			*sound_card;
+	int						sound_card_device_number;
+	struct snd_rawmidi		*rawmidi_interface;
 	struct snd_rawmidi_substream	*midi_in_substream;
 	unsigned long			midi_in_up;
 	spinlock_t				midi_in_lock;
@@ -61,52 +61,50 @@ struct maschine_jam_driver_data {
 	spinlock_t				midi_out_lock;
 };
 
-static const char shortname[] = "MASCHINEJAM";
-static const char longname[] = "Maschine Jam";
-
-static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
-static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
-static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
-
-static int maschine_jam_midi_in_open(struct snd_rawmidi_substream *substream){
-	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
-
-	printk(KERN_ALERT "in_open() - 1");
-	spin_lock_irq(&mj_driver_data->midi_in_lock);
-	mj_driver_data->midi_in_substream = substream;
-	spin_unlock_irq(&mj_driver_data->midi_in_lock);
-	printk(KERN_ALERT "in_open() - 2");
-	return 0;
-}
-
-static int maschine_jam_midi_in_close(struct snd_rawmidi_substream *substream){
-	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
-
-	printk(KERN_ALERT "in_close() - 1");
-	spin_lock_irq(&mj_driver_data->midi_in_lock);
+static void maschine_jam_hid_write_report(struct work_struct *);
+static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data *mj_driver_data, struct hid_device *mj_hid_device){
+	unsigned int i;
+	
+	// HID Device
+	mj_driver_data->mj_hid_device = mj_hid_device;
+	
+	// Inputs
+	for(i = 0; i < MASCHINE_JAM_NUMBER_KNOBS; i++){
+		mj_driver_data->midi_in_knob_mapping[i] = i;
+	}
+	memset(mj_driver_data->hid_report01_knobs, 0, sizeof(mj_driver_data->hid_report01_knobs));
+	for(i = 0; i < MASCHINE_JAM_NUMBER_BUTTONS; i++){
+		mj_driver_data->midi_in_button_mapping[i] = i + MASCHINE_JAM_NUMBER_KNOBS;
+	}
+	memset(mj_driver_data->hid_report01_buttons, 0, sizeof(mj_driver_data->hid_report01_buttons));
+	for(i = 0; i < MASCHINE_JAM_NUMBER_SMARTSTRIPS; i++){
+		mj_driver_data->midi_in_smartstrip_mapping[i] = i + MASCHINE_JAM_NUMBER_KNOBS + MASCHINE_JAM_NUMBER_BUTTONS;
+	}
+	memset(mj_driver_data->hid_report02_smartstrips, 0, sizeof(mj_driver_data->hid_report02_smartstrips));
+	
+	// Outputs
+	memset(mj_driver_data->hid_report_led_buttons_1, 0, sizeof(mj_driver_data->hid_report_led_buttons_1));
+	memset(mj_driver_data->hid_report_led_buttons_2, 0, sizeof(mj_driver_data->hid_report_led_buttons_2));
+	spin_lock_init(&mj_driver_data->hid_report_led_buttons_lock);
+	INIT_WORK(&mj_driver_data->hid_report_led_buttons_work, maschine_jam_hid_write_report);
+	memset(mj_driver_data->hid_report_led_pads, 0, sizeof(mj_driver_data->hid_report_led_pads));
+	spin_lock_init(&mj_driver_data->hid_report_led_pads_lock);
+	INIT_WORK(&mj_driver_data->hid_report_led_pads_work, maschine_jam_hid_write_report);
+	memset(mj_driver_data->hid_report_led_strips, 0, sizeof(mj_driver_data->hid_report_led_strips));
+	spin_lock_init(&mj_driver_data->hid_report_led_strips_lock);
+	INIT_WORK(&mj_driver_data->hid_report_led_strips_work, maschine_jam_hid_write_report);
+	INIT_WORK(&mj_driver_data->hid_report_write_report_work, maschine_jam_hid_write_report);
+	
+	// Sound/Midi Interface
+	mj_driver_data->sound_card = NULL;
+	mj_driver_data->rawmidi_interface = NULL;
 	mj_driver_data->midi_in_substream = NULL;
-	spin_unlock_irq(&mj_driver_data->midi_in_lock);
-	printk(KERN_ALERT "in_close() - 2");
-	return 0;
+	mj_driver_data->midi_in_up = 0;
+	spin_lock_init(&mj_driver_data->midi_in_lock);
+	mj_driver_data->midi_out_substream = NULL;
+	mj_driver_data->midi_out_up = 0;
+	spin_lock_init(&mj_driver_data->midi_out_lock);
 }
-
-static void maschine_jam_midi_in_trigger(struct snd_rawmidi_substream *substream, int up){
-	unsigned long flags;
-	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
-
-	printk(KERN_ALERT "in_trigger() - 1");
-	spin_lock_irqsave(&mj_driver_data->midi_in_lock, flags);
-	mj_driver_data->midi_in_up = up;
-	spin_unlock_irqrestore(&mj_driver_data->midi_in_lock, flags);
-	printk(KERN_ALERT "in_trigger() - 2");
-}
-
-// MIDI_IN operations
-static struct snd_rawmidi_ops maschine_jam_midi_in_ops = {
-	.open = maschine_jam_midi_in_open,
-	.close = maschine_jam_midi_in_close,
-	.trigger = maschine_jam_midi_in_trigger
-};
 
 static void maschine_jam_hid_write_report(struct work_struct *work){
 	int i;
@@ -124,74 +122,6 @@ static void maschine_jam_hid_write_report(struct work_struct *work){
 	spin_unlock(&mj_driver_data->hid_report_led_buttons_lock);
 	hid_hw_output_report(mj_driver_data->mj_hid_device, (unsigned char*)&buffer, sizeof(buffer));
 	printk(KERN_ALERT "maschine_jam_hid_write_report() - 2");
-}
-
-static int maschine_jam_midi_out_open(struct snd_rawmidi_substream *substream){
-	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
-
-	printk(KERN_ALERT "out_open() - 1");
-
-	spin_lock_irq(&mj_driver_data->midi_out_lock);
-	mj_driver_data->midi_out_substream = substream;
-	mj_driver_data->midi_out_up = 0;
-	spin_unlock_irq(&mj_driver_data->midi_out_lock);
-
-	printk(KERN_ALERT "out_open() - 2");
-	return 0;
-}
-
-static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream){
-	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
-
-	printk(KERN_ALERT "out_close() - 1");
-
-	spin_lock_irq(&mj_driver_data->midi_out_lock);
-	mj_driver_data->midi_out_substream = NULL;
-	mj_driver_data->midi_out_up = 0;
-	spin_unlock_irq(&mj_driver_data->midi_out_lock);
-
-	printk(KERN_ALERT "out_close() - 2");
-	return 0;
-}
-
-// get virtual midi data and transmit to physical maschine jam, cannot block
-static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substream, int up){
-	unsigned long flags;
-	unsigned char data;
-	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
-
-	if (up != 0) {
-		while (snd_rawmidi_transmit(substream, &data, 1) == 1) {
-			printk(KERN_ALERT "out_trigger data - %d", data);
-			spin_lock_irqsave(&mj_driver_data->hid_report_led_buttons_lock, flags);
-			mj_driver_data->hid_report_led_buttons_1[0] = data;
-			spin_unlock_irqrestore(&mj_driver_data->hid_report_led_buttons_lock, flags);
-			schedule_work(&mj_driver_data->hid_report_write_report_work);
-		}
-	}else{
-		printk(KERN_ALERT "out_trigger: up = 0");
-	}
-	spin_lock_irqsave(&mj_driver_data->midi_out_lock, flags);
-	mj_driver_data->midi_out_up = up;
-	spin_unlock_irqrestore(&mj_driver_data->midi_out_lock, flags);
-}
-
-// MIDI_OUT operations
-static struct snd_rawmidi_ops maschine_jam_midi_out_ops = {
-	.open = maschine_jam_midi_out_open,
-	.close = maschine_jam_midi_out_close,
-	.trigger = maschine_jam_midi_out_trigger
-};
-
-static __u8 *maschine_jam_report_fixup(struct hid_device *mj_hid_device, __u8 *rdesc,
-		unsigned int *rsize){
-	return rdesc;
-}
-
-static int maschine_jam_input_mapping(struct hid_device *mj_hid_device, struct hid_input *hi,
-		struct hid_field *field, struct hid_usage *usage,
-		unsigned long **bit, int *max){
-	return 0;
 }
 
 static int maschine_jam_write_midi_note(struct maschine_jam_driver_data *mj_driver_data,
@@ -277,11 +207,11 @@ static void maschine_jam_parse_report02(struct maschine_jam_driver_data *mj_driv
 	data[34], data[35], data[36], data[37], data[38], data[39], data[40], data[41], data[42], data[43], data[44], data[45], data[46], data[47]);
 	for (strip_byte=0; (strip_byte*6)<size; strip_byte++){
 		if (mj_driver_data->hid_report02_smartstrips[strip_byte] != data[strip_byte]){
-			maschine_jam_write_midi_note(mj_driver_data, 0x90, mj_driver_data->midi_in_strip_byte_mapping[strip_byte], data[strip_byte]);
+			maschine_jam_write_midi_note(mj_driver_data, 0x90, mj_driver_data->midi_in_smartstrip_mapping[strip_byte], data[strip_byte]);
 			mj_driver_data->hid_report02_smartstrips[strip_byte] = data[strip_byte];
 		}
 		if (mj_driver_data->hid_report02_smartstrips[strip_byte+1] != data[strip_byte+1]){
-			maschine_jam_write_midi_note(mj_driver_data, 0x90, mj_driver_data->midi_in_strip_byte_mapping[strip_byte], data[strip_byte+1]);
+			maschine_jam_write_midi_note(mj_driver_data, 0x90, mj_driver_data->midi_in_smartstrip_mapping[strip_byte], data[strip_byte+1]);
 			mj_driver_data->hid_report02_smartstrips[strip_byte+1] = data[strip_byte+1];
 		}
 	}
@@ -691,131 +621,180 @@ static const struct attribute_group *maschine_jam_inputs_button_groups[] = {
 	NULL
 };
 
+
 static int maschine_jam_snd_dev_free(struct snd_device *dev){
 	return 0;
 }
-
 static struct snd_device_ops maschine_jam_snd_device_ops = {
 	.dev_free = maschine_jam_snd_dev_free,
 };
+static int maschine_jam_midi_in_open(struct snd_rawmidi_substream *substream){
+	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-static int maschine_jam_initialize_private_data(struct maschine_jam_driver_data *mj_driver_data){
-	static int dev;
-	struct snd_card *card;
-	struct snd_rawmidi *rawmidi;
-	int err;
-	unsigned int i;
-
-	// TODO validate hid fields from some report
-
-	// Initialize midi_in button mapping
-	for(i = 0; i < MASCHINE_JAM_NUMBER_KNOBS; i++){
-		mj_driver_data->midi_in_knob_mapping[i] = i;
-	}
-	for(i = 0; i < MASCHINE_JAM_NUMBER_BUTTONS; i++){
-		mj_driver_data->midi_in_button_mapping[i] = i + MASCHINE_JAM_NUMBER_KNOBS;
-	}
-
-	INIT_WORK(&mj_driver_data->hid_report_write_report_work, maschine_jam_hid_write_report);
-
-	memset(mj_driver_data->hid_report_led_buttons_1, 0, sizeof(mj_driver_data->hid_report_led_buttons_1));
-	memset(mj_driver_data->hid_report_led_buttons_2, 0, sizeof(mj_driver_data->hid_report_led_buttons_2));
-	spin_lock_init(&mj_driver_data->hid_report_led_buttons_lock);
-	INIT_WORK(&mj_driver_data->hid_report_led_buttons_work, maschine_jam_hid_write_report);
-
-	memset(mj_driver_data->hid_report_led_pads, 0, sizeof(mj_driver_data->hid_report_led_pads));
-	spin_lock_init(&mj_driver_data->hid_report_led_pads_lock);
-	INIT_WORK(&mj_driver_data->hid_report_led_pads_work, maschine_jam_hid_write_report);
-
-	memset(mj_driver_data->hid_report_led_strips, 0, sizeof(mj_driver_data->hid_report_led_strips));
-	spin_lock_init(&mj_driver_data->hid_report_led_strips_lock);
-	INIT_WORK(&mj_driver_data->hid_report_led_strips_work, maschine_jam_hid_write_report);
-
-
-	printk(KERN_ALERT "initialize started - dev %d - interface_number %d", dev, mj_driver_data->interface_number);
-
-	if (mj_driver_data->interface_number != 0){
-		printk(KERN_ALERT "initialize - only set up midi device ONCE for interace 0 - %d", mj_driver_data->interface_number);
-		return 53; /* only set up midi device ONCE for interace 1 */
-	}
-
-	if (dev >= SNDRV_CARDS){
-		printk(KERN_ALERT "initialize - -ENODEV - dev = %d", dev);
-		return -ENODEV;
-	}
-
-	if (!enable[dev]){
-		printk(KERN_ALERT "initialize - -ENOENT");
-		dev++;
-		return -ENOENT;
-	}
-
-	/* Setup sound card */
-	err = snd_card_new(&mj_driver_data->mj_hid_device->dev, index[dev], id[dev], THIS_MODULE, 0, &card);
-	if (err < 0) {
-		printk(KERN_ALERT "failed to create maschine jam sound card");
-		err = -ENOMEM;
-		goto fail;
-	}
-	mj_driver_data->card = card;
-
-	/* Setup sound device */
-	err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, mj_driver_data, &maschine_jam_snd_device_ops);
-	if (err < 0) {
-		printk(KERN_ALERT "ailed to create maschine jam sound device");
-		goto fail;
-	}
-
-	strncpy(card->driver, shortname, sizeof(card->driver));
-	strncpy(card->shortname, shortname, sizeof(card->shortname));
-	strncpy(card->longname, longname, sizeof(card->longname));
-
-	/* Set up rawmidi */
-	err = snd_rawmidi_new(card, card->shortname, 0, 1, 1, &rawmidi);
-	if (err < 0) {
-		printk(KERN_ALERT "failed to create maschine jam rawmidi device");
-		goto fail;
-	}
-	mj_driver_data->rawmidi = rawmidi;
-	strncpy(rawmidi->name, card->longname, sizeof(rawmidi->name));
-	rawmidi->info_flags = SNDRV_RAWMIDI_INFO_INPUT | SNDRV_RAWMIDI_INFO_OUTPUT | SNDRV_RAWMIDI_INFO_DUPLEX;
-	rawmidi->private_data = mj_driver_data;
-
-	snd_rawmidi_set_ops(rawmidi, SNDRV_RAWMIDI_STREAM_INPUT, &maschine_jam_midi_in_ops);
-	snd_rawmidi_set_ops(rawmidi, SNDRV_RAWMIDI_STREAM_OUTPUT, &maschine_jam_midi_out_ops);
-
-	spin_lock_init(&mj_driver_data->midi_in_lock);
-	spin_lock_init(&mj_driver_data->midi_out_lock);
-
-	/* register it */
-	err = snd_card_register(card);
-	if (err < 0) {
-		printk(KERN_ALERT "failed to register maschine jam sound card");
-		goto fail;
-	}
-
-	printk(KERN_ALERT "initialize finished");
+	printk(KERN_ALERT "in_open() - 1");
+	spin_lock_irq(&mj_driver_data->midi_in_lock);
+	mj_driver_data->midi_in_substream = substream;
+	spin_unlock_irq(&mj_driver_data->midi_in_lock);
+	printk(KERN_ALERT "in_open() - 2");
 	return 0;
-
-fail:
-	if (mj_driver_data->card) {
-		snd_card_free(mj_driver_data->card);
-		mj_driver_data->card = NULL;
-	}
-	return err;
 }
 
-static int maschine_jam_deinitialize_private_data(struct maschine_jam_driver_data *mj_driver_data){
-	if (mj_driver_data->card) {
-		snd_card_disconnect(mj_driver_data->card);
-		snd_card_free_when_closed(mj_driver_data->card);
+static int maschine_jam_midi_in_close(struct snd_rawmidi_substream *substream){
+	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
+
+	printk(KERN_ALERT "in_close() - 1");
+	spin_lock_irq(&mj_driver_data->midi_in_lock);
+	mj_driver_data->midi_in_substream = NULL;
+	spin_unlock_irq(&mj_driver_data->midi_in_lock);
+	printk(KERN_ALERT "in_close() - 2");
+	return 0;
+}
+
+static void maschine_jam_midi_in_trigger(struct snd_rawmidi_substream *substream, int up){
+	unsigned long flags;
+	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
+
+	printk(KERN_ALERT "in_trigger() - 1");
+	spin_lock_irqsave(&mj_driver_data->midi_in_lock, flags);
+	mj_driver_data->midi_in_up = up;
+	spin_unlock_irqrestore(&mj_driver_data->midi_in_lock, flags);
+	printk(KERN_ALERT "in_trigger() - 2");
+}
+
+// MIDI_IN operations
+static struct snd_rawmidi_ops maschine_jam_midi_in_ops = {
+	.open = maschine_jam_midi_in_open,
+	.close = maschine_jam_midi_in_close,
+	.trigger = maschine_jam_midi_in_trigger
+};
+
+static int maschine_jam_midi_out_open(struct snd_rawmidi_substream *substream){
+	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
+
+	printk(KERN_ALERT "out_open() - 1");
+
+	spin_lock_irq(&mj_driver_data->midi_out_lock);
+	mj_driver_data->midi_out_substream = substream;
+	mj_driver_data->midi_out_up = 0;
+	spin_unlock_irq(&mj_driver_data->midi_out_lock);
+
+	printk(KERN_ALERT "out_open() - 2");
+	return 0;
+}
+
+static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream){
+	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
+
+	printk(KERN_ALERT "out_close() - 1");
+
+	spin_lock_irq(&mj_driver_data->midi_out_lock);
+	mj_driver_data->midi_out_substream = NULL;
+	mj_driver_data->midi_out_up = 0;
+	spin_unlock_irq(&mj_driver_data->midi_out_lock);
+
+	printk(KERN_ALERT "out_close() - 2");   
+	return 0;
+}
+
+// get virtual midi data and transmit to physical maschine jam, cannot block
+static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substream, int up){
+	unsigned long flags;
+	unsigned char data;
+	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
+
+	if (up != 0) {
+		while (snd_rawmidi_transmit(substream, &data, 1) == 1) {
+			printk(KERN_ALERT "out_trigger data - %d", data);
+			spin_lock_irqsave(&mj_driver_data->hid_report_led_buttons_lock, flags);
+			mj_driver_data->hid_report_led_buttons_1[0] = data;
+			spin_unlock_irqrestore(&mj_driver_data->hid_report_led_buttons_lock, flags);
+			schedule_work(&mj_driver_data->hid_report_write_report_work);
+		}
+	}else{
+		printk(KERN_ALERT "out_trigger: up = 0");
+	}
+	spin_lock_irqsave(&mj_driver_data->midi_out_lock, flags);
+	mj_driver_data->midi_out_up = up;
+	spin_unlock_irqrestore(&mj_driver_data->midi_out_lock, flags);
+}
+
+// MIDI_OUT operations
+static struct snd_rawmidi_ops maschine_jam_midi_out_ops = {
+	.open = maschine_jam_midi_out_open,
+	.close = maschine_jam_midi_out_close,
+	.trigger = maschine_jam_midi_out_trigger
+};
+#define MASCHINE_JAM_SOUND_CARD_DEVICE_NUMBER 0
+static int maschine_jam_create_sound_card(struct maschine_jam_driver_data *mj_driver_data){
+	const char shortname[] = "MASCHINEJAM";
+	const char longname[] = "Maschine Jam";
+	int error;
+	struct snd_card *sound_card;
+	struct snd_rawmidi *rawmidi_interface;
+	
+	/* Setup sound card */
+	error = snd_card_new(&mj_driver_data->mj_hid_device->dev, SNDRV_DEFAULT_IDX1, SNDRV_DEFAULT_STR1, THIS_MODULE, 0, &sound_card);
+	if (error != 0) {
+		printk(KERN_ALERT "Failed to create Maschine Jam sound card.");
+		goto return_error;
+	}
+	strncpy(sound_card->driver, shortname, sizeof(sound_card->driver));
+	strncpy(sound_card->shortname, shortname, sizeof(sound_card->shortname));
+	strncpy(sound_card->longname, longname, sizeof(sound_card->longname));
+	
+	/* Setup sound device */
+	error = snd_device_new(sound_card, SNDRV_DEV_LOWLEVEL, mj_driver_data->mj_hid_device, &maschine_jam_snd_device_ops);
+	if (error != 0) {
+		printk(KERN_ALERT "Failed to create Maschine Jam sound device.");
+		goto failure_snd_card_free;
 	}
 
+	/* Set up rawmidi */
+	error = snd_rawmidi_new(sound_card, sound_card->shortname, 0, 1, 1, &rawmidi_interface);
+	if (error != 0) {
+		printk(KERN_ALERT "Failed to create Maschine Jam rawmidi device.");
+		goto failure_snd_device_free;
+	}
+	strncpy(rawmidi_interface->name, sound_card->longname, sizeof(rawmidi_interface->name));
+	rawmidi_interface->info_flags = SNDRV_RAWMIDI_INFO_INPUT | SNDRV_RAWMIDI_INFO_OUTPUT | SNDRV_RAWMIDI_INFO_DUPLEX;
+	rawmidi_interface->private_data = mj_driver_data;
+	snd_rawmidi_set_ops(rawmidi_interface, SNDRV_RAWMIDI_STREAM_INPUT, &maschine_jam_midi_in_ops);
+	snd_rawmidi_set_ops(rawmidi_interface, SNDRV_RAWMIDI_STREAM_OUTPUT, &maschine_jam_midi_out_ops);
+
+	/* Register sound card */
+	error = snd_card_register(sound_card);
+	if (error != 0) {
+		printk(KERN_ALERT "Failed to register Maschine Jam sound card.");
+		goto failure_snd_device_free;
+	}
+	
+	mj_driver_data->sound_card = sound_card;
+	mj_driver_data->rawmidi_interface = rawmidi_interface;
+	goto return_error;
+
+failure_snd_device_free:
+	snd_device_free(sound_card, mj_driver_data->mj_hid_device);
+failure_snd_card_free:
+	snd_card_free(sound_card);
+return_error:
+	return error;
+}
+static int maschine_jam_destroy_sound_card(struct maschine_jam_driver_data *mj_driver_data){
+	struct snd_card *sound_card;
+
+	if (mj_driver_data->sound_card != NULL) {
+		sound_card = mj_driver_data->sound_card;
+		mj_driver_data->sound_card = NULL;
+		snd_card_disconnect(sound_card);
+		snd_device_free(sound_card, mj_driver_data->mj_hid_device);
+		snd_card_free_when_closed(sound_card);
+	}
+	
 	return 0;
 }
 
 static int maschine_jam_initialize_sysfs(struct kobject* device_kobject){
-	int err = 0;
+	int error = 0;
 	struct kobject* directory_inputs = NULL;
 	struct kobject* directory_inputs_knobs = NULL;
 	struct kobject* directory_inputs_buttons = NULL;
@@ -833,16 +812,16 @@ static int maschine_jam_initialize_sysfs(struct kobject* device_kobject){
 	if (directory_inputs_buttons == NULL) {
 		printk(KERN_ALERT "kobject_create_and_add failed!");
 	}
-	err = sysfs_create_groups(directory_inputs_knobs, maschine_jam_inputs_knob_groups);
-	if (err < 0) {
+	error = sysfs_create_groups(directory_inputs_knobs, maschine_jam_inputs_knob_groups);
+	if (error < 0) {
 		printk(KERN_ALERT "device_create_file failed!");
 	}
 	directory_inputs_buttons = kobject_create_and_add("buttons", directory_inputs);
 	if (directory_inputs_buttons == NULL) {
 		printk(KERN_ALERT "kobject_create_and_add failed!");
 	}
-	err = sysfs_create_groups(directory_inputs_buttons, maschine_jam_inputs_button_groups);
-	if (err < 0) {
+	error = sysfs_create_groups(directory_inputs_buttons, maschine_jam_inputs_button_groups);
+	if (error < 0) {
 		printk(KERN_ALERT "device_create_file failed!");
 	}
 	directory_inputs_smartstrips = kobject_create_and_add("smartstrips", directory_inputs);
@@ -865,77 +844,92 @@ static int maschine_jam_initialize_sysfs(struct kobject* device_kobject){
 	if (directory_outputs_leds_smartstrips == NULL) {
 		printk(KERN_ALERT "kobject_create_and_add failed!");
 	}
-	return err;
+	return error;
 }
-
+static int maschine_jam_deinitialize_sysfs(struct kobject* device_kobject){
+	int error = 0;
+	// TODO this stuff
+	//device_remove_file
+	return error;
+}
 static int maschine_jam_probe(struct hid_device *mj_hid_device, const struct hid_device_id *id){
-	int ret;
+	int error;
 	struct usb_interface *intface = to_usb_interface(mj_hid_device->dev.parent);
 	unsigned short interface_number = intface->cur_altsetting->desc.bInterfaceNumber;
 	//unsigned long dd = id->driver_data;
 	struct maschine_jam_driver_data *mj_driver_data = NULL;
 
 	printk(KERN_ALERT "Found Maschine JAM!");
+	if (interface_number != 0){
+		printk(KERN_ALERT "Unexpected interface number %d was found. Unit may be in update mode.", interface_number);
+		error = -EBADR; /* Interface 1 is the Device Firmware Upgrade Interface */
+		goto return_error;
+	}
 
 	mj_driver_data = kzalloc(sizeof(struct maschine_jam_driver_data), GFP_KERNEL);
 	if (mj_driver_data == NULL) {
-		printk(KERN_ALERT "can't alloc descriptor");
-		ret = -ENOMEM;
-		goto err_return;
+		printk(KERN_ALERT "kzalloc(sizeof(struct maschine_jam_driver_data), GFP_KERNEL); FAILED");
+		error = -ENOMEM;
+		goto return_error;
 	}
-
-	mj_driver_data->mj_hid_device = mj_hid_device;
-	mj_driver_data->interface_number = interface_number;
-
-	hid_set_drvdata(mj_hid_device, mj_driver_data);
-	printk(KERN_ALERT "probe() - 2");
-
-	ret = hid_parse(mj_hid_device);
-	if (ret) {
-		printk(KERN_ALERT "hid parse failed");
-		goto err_free;
+	maschine_jam_initialize_driver_data(mj_driver_data, mj_hid_device);
+	error = maschine_jam_create_sound_card(mj_driver_data);
+	if (error != 0){
+		printk(KERN_ALERT "Failed to create sound card.");
+		goto failure_free_driver_data;
 	}
-
-	ret = hid_hw_start(mj_hid_device, HID_CONNECT_DEFAULT);
-	if (ret) {
-		printk(KERN_ALERT "hw start failed");
-		goto err_free;
+	error = maschine_jam_initialize_sysfs(&mj_driver_data->mj_hid_device->dev.kobj);
+	if (interface_number != 0){
+		printk(KERN_ALERT "Failed to initialize sysfs attributes.");
+		goto failure_destroy_sound_card;
 	}
-	printk(KERN_ALERT "probe() - 3");
-
-	ret = hid_hw_open(mj_hid_device);
-	if (ret) {
-		printk(KERN_ALERT "hw open failed");
-		goto err_free;
-	}
-	printk(KERN_ALERT "probe() - 4");
-
-	ret = maschine_jam_initialize_private_data(mj_driver_data);	
 	
-	ret |= maschine_jam_initialize_sysfs(&mj_driver_data->mj_hid_device->dev.kobj);
+	hid_set_drvdata(mj_hid_device, mj_driver_data);
 
-	//device_remove_file
-	if (ret < 0)
-		goto err_stop;
+	// TODO validate hid fields from some report
+	error = hid_parse(mj_hid_device);
+	if (error) {
+		printk(KERN_ALERT "hid parse failed");
+		goto failure_deinitialize_sysfs;
+	}
+	error = hid_hw_start(mj_hid_device, HID_CONNECT_DEFAULT);
+	if (error) {
+		printk(KERN_ALERT "hw start failed");
+		goto failure_deinitialize_sysfs;
+	}
+	error = hid_hw_open(mj_hid_device);
+	if (error) {
+		printk(KERN_ALERT "hw open failed");
+		goto failure_deinitialize_sysfs;
+	}
+	if (error < 0)
+		goto failure_hid_hw_stop;
 
-	printk(KERN_ALERT "Maschine JAM probe() finished - %d", ret);
+	printk(KERN_ALERT "Maschine JAM probe() finished - %d", error);
+	goto return_error;
 
-	return 0;
-err_stop:
+failure_hid_hw_stop:
 	hid_hw_stop(mj_hid_device);
-err_free:
+failure_deinitialize_sysfs:
+	maschine_jam_deinitialize_sysfs(&mj_driver_data->mj_hid_device->dev.kobj);
+failure_destroy_sound_card:
+	maschine_jam_destroy_sound_card(mj_driver_data);
+failure_free_driver_data:
 	kfree(mj_driver_data);
-err_return:
-
-	return ret;
+return_error:
+	return error;
 }
 
 static void maschine_jam_remove(struct hid_device *mj_hid_device){
-	struct maschine_jam_driver_data *mj_driver_data = hid_get_drvdata(mj_hid_device);
+	struct maschine_jam_driver_data *mj_driver_data;
 
-	maschine_jam_deinitialize_private_data(mj_driver_data);
-	hid_hw_stop(mj_hid_device);
-	kfree(mj_driver_data);
+	if (mj_hid_device != NULL){
+		mj_driver_data = hid_get_drvdata(mj_hid_device);
+
+		hid_hw_stop(mj_hid_device);
+		maschine_jam_deinitialize_sysfs(&mj_hid_device->dev.kobj);
+		kfree(mj_driver_data);
+	}
 
 	printk(KERN_ALERT "Maschine JAM removed!");
 }
@@ -954,8 +948,6 @@ MODULE_DEVICE_TABLE(hid, maschine_jam_devices);
 static struct hid_driver maschine_jam_driver = {
 	.name = "maschine-jam",
 	.id_table = maschine_jam_devices,
-	.report_fixup = maschine_jam_report_fixup,
-	.input_mapping = maschine_jam_input_mapping,
 	.raw_event = maschine_jam_raw_event,
 	.probe = maschine_jam_probe,
 	.remove = maschine_jam_remove,
