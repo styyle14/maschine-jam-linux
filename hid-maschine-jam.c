@@ -19,7 +19,7 @@
 #define MASCHINE_JAM_HID_REPORT_02_SMARTSTRIP_BITS 24
 #define MASCHINE_JAM_HID_REPORT_02_SMARTSTRIPS_BYTES (MASCHINE_JAM_NUMBER_SMARTSTRIPS * MASCHINE_JAM_HID_REPORT_02_SMARTSTRIP_BITS) / 8 // 48
 
-#define MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS 0664
+#define MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS VERIFY_OCTAL_PERMISSIONS(0664)
 
 struct maschine_jam_driver_data {
 	// Device Information
@@ -48,6 +48,16 @@ struct maschine_jam_driver_data {
 	spinlock_t				hid_report_led_strips_lock;
 	struct work_struct		hid_report_led_strips_work;
 	struct work_struct		hid_report_write_report_work;
+	
+	// Sysfs Interface
+	struct kobject *directory_inputs;
+	struct kobject *directory_inputs_knobs;
+	struct kobject *directory_inputs_buttons;
+	struct kobject *directory_inputs_smartstrips;
+	struct kobject *directory_outputs;
+	struct kobject *directory_outputs_leds;
+	struct kobject *directory_outputs_leds_buttons;
+	struct kobject *directory_outputs_leds_smartstrips;
 
 	// Sound/Midi Interface
 	struct snd_card			*sound_card;
@@ -94,6 +104,16 @@ static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data 
 	spin_lock_init(&mj_driver_data->hid_report_led_strips_lock);
 	INIT_WORK(&mj_driver_data->hid_report_led_strips_work, maschine_jam_hid_write_report);
 	INIT_WORK(&mj_driver_data->hid_report_write_report_work, maschine_jam_hid_write_report);
+	
+	// Sysfs Interface
+	mj_driver_data->directory_inputs = NULL;
+	mj_driver_data->directory_inputs_knobs = NULL;
+	mj_driver_data->directory_inputs_buttons = NULL;
+	mj_driver_data->directory_inputs_smartstrips = NULL;
+	mj_driver_data->directory_outputs = NULL;
+	mj_driver_data->directory_outputs_leds = NULL;
+	mj_driver_data->directory_outputs_leds_buttons = NULL;
+	mj_driver_data->directory_outputs_leds_smartstrips = NULL;
 	
 	// Sound/Midi Interface
 	mj_driver_data->sound_card = NULL;
@@ -168,19 +188,19 @@ static inline void maschine_jam_toggle_button_bit(u8 *data, uint8_t offset){
 }
 static int maschine_jam_parse_report01(struct maschine_jam_driver_data *mj_driver_data, struct hid_report *report, u8 *data, int size){
 	int return_value = 0;
-	struct hid_field *knobs_hid_field = report->field[0];
-	struct hid_field *buttons_hid_field = report->field[1];
 	unsigned int button_bit, knob_nibble, knobs_data_index, buttons_data_index;
 	uint8_t old_knob_value, new_knob_value, old_button_value, new_button_value;
+	struct hid_field *knobs_hid_field = report->field[0];
+	struct hid_field *buttons_hid_field = report->field[1];
 
-	printk(KERN_ALERT "report - %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X", data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]);
+	//printk(KERN_ALERT "report - %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X", data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]);
 
 	knobs_data_index = knobs_hid_field->report_offset / 8;
 	for (knob_nibble = 0; knob_nibble < knobs_hid_field->report_count && knob_nibble < MASCHINE_JAM_NUMBER_KNOBS; knob_nibble++){
 		old_knob_value = maschine_jam_get_knob_nibble(mj_driver_data->hid_report01_knobs, knob_nibble);
 		new_knob_value = maschine_jam_get_knob_nibble(&data[knobs_data_index], knob_nibble);
 		if (old_knob_value != new_knob_value){
-			printk(KERN_ALERT "knob_nibble: %d, old value: %d, new value: %d", knob_nibble, old_knob_value, new_knob_value);
+			//printk(KERN_ALERT "knob_nibble: %d, old value: %d, new value: %d", knob_nibble, old_knob_value, new_knob_value);
 			return_value = maschine_jam_write_midi_note(mj_driver_data, 0x90, mj_driver_data->midi_in_knob_mapping[knob_nibble], new_knob_value * 0x04);
 			maschine_jam_set_knob_nibble(mj_driver_data->hid_report01_knobs, knob_nibble, new_knob_value);
 		}
@@ -190,31 +210,54 @@ static int maschine_jam_parse_report01(struct maschine_jam_driver_data *mj_drive
 		old_button_value = maschine_jam_get_button_bit(mj_driver_data->hid_report01_buttons, button_bit);
 		new_button_value = maschine_jam_get_button_bit(&data[buttons_data_index], button_bit);
 		if (old_button_value != new_button_value){
-			printk(KERN_ALERT "button_bit: %d, old value: %d, new value: %d", button_bit, old_button_value, new_button_value);
+			//printk(KERN_ALERT "button_bit: %d, old value: %d, new value: %d", button_bit, old_button_value, new_button_value);
 			maschine_jam_toggle_button_bit(mj_driver_data->hid_report01_buttons, button_bit);
-			return_value = maschine_jam_write_midi_note(mj_driver_data, 0x80 + (0x10 * new_button_value), mj_driver_data->midi_in_button_mapping[button_bit], 0x40 * new_button_value);
+			return_value = maschine_jam_write_midi_note(mj_driver_data, 0x80 + (0x10 * new_button_value), mj_driver_data->midi_in_button_mapping[button_bit], 0xFF * new_button_value);
 		}
 	}
 	return return_value;
 }
+struct smartstrip_triplet {
+	uint16_t timestamp;
+	uint8_t value;
+};
+static inline struct smartstrip_triplet maschine_jam_get_smartstrip_triplet(u8 *data, uint8_t index){
+	u8 *smartstrip_data = &data[index * 3];
+	return (struct smartstrip_triplet){.timestamp = smartstrip_data[0] + (smartstrip_data[1] << 8), .value = smartstrip_data[2]};
+}
+static inline void maschine_jam_set_smartstrip_triplet(u8 *data, uint8_t index, struct smartstrip_triplet triplet){
+	u8 *smartstrip_data = &data[index * 3];
+	smartstrip_data[0] = triplet.timestamp & 0xFF;
+	smartstrip_data[1] = triplet.timestamp >> 8;
+	smartstrip_data[2] = triplet.value;	
+}
+static int maschine_jam_parse_report02(struct maschine_jam_driver_data *mj_driver_data, struct hid_report *report, u8 *data, int size){
+	int return_value = 0;
+	unsigned int smartstrip_data_index, smartstrip_index;
+	struct smartstrip_triplet old_triplet, new_triplet;
+	struct hid_field *smartstrips_hid_field = report->field[0];
 
-static void maschine_jam_parse_report02(struct maschine_jam_driver_data *mj_driver_data, struct hid_report *report, u8 *data, int size){
-	int strip_byte;
-
-	printk(KERN_ALERT "report - %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",
-	data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15], data[16],
-	data[17], data[18], data[19], data[20], data[21], data[22], data[23], data[24], data[25], data[26], data[27], data[28], data[29], data[30], data[31], data[32], data[33],
-	data[34], data[35], data[36], data[37], data[38], data[39], data[40], data[41], data[42], data[43], data[44], data[45], data[46], data[47]);
-	for (strip_byte=0; (strip_byte*6)<size; strip_byte++){
-		if (mj_driver_data->hid_report02_smartstrips[strip_byte] != data[strip_byte]){
-			maschine_jam_write_midi_note(mj_driver_data, 0x90, mj_driver_data->midi_in_smartstrip_mapping[strip_byte], data[strip_byte]);
-			mj_driver_data->hid_report02_smartstrips[strip_byte] = data[strip_byte];
-		}
-		if (mj_driver_data->hid_report02_smartstrips[strip_byte+1] != data[strip_byte+1]){
-			maschine_jam_write_midi_note(mj_driver_data, 0x90, mj_driver_data->midi_in_smartstrip_mapping[strip_byte], data[strip_byte+1]);
-			mj_driver_data->hid_report02_smartstrips[strip_byte+1] = data[strip_byte+1];
+	//printk(KERN_ALERT "report - %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",
+	//data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15],
+	//data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23], data[24], data[25], data[26], data[27], data[28], data[29], data[30], data[31],
+	//data[32], data[33], data[34], data[35], data[36], data[37], data[38], data[39], data[40], data[41], data[42], data[43], data[44], data[45], data[46], data[47]);
+	
+	smartstrip_data_index = smartstrips_hid_field->report_offset / 8;
+	for (smartstrip_index = 0; smartstrip_index < smartstrips_hid_field->report_count && smartstrip_index < MASCHINE_JAM_NUMBER_SMARTSTRIPS; smartstrip_index++){
+		old_triplet = maschine_jam_get_smartstrip_triplet(mj_driver_data->hid_report02_smartstrips, smartstrip_index);
+		new_triplet = maschine_jam_get_smartstrip_triplet(&data[smartstrip_data_index], smartstrip_index);
+		if (old_triplet.value != new_triplet.value){
+			//printk(KERN_ALERT "old_triplet: smartstrip_index: %d, timestamp: %04X, value %02X", smartstrip_index, old_triplet.timestamp, old_triplet.value);
+			//printk(KERN_ALERT "new_triplet: smartstrip_index: %d, timestamp: %04X, value %02X", smartstrip_index, new_triplet.timestamp, new_triplet.value);
+			if (new_triplet.value == 0){
+				maschine_jam_write_midi_note(mj_driver_data, 0x80, mj_driver_data->midi_in_smartstrip_mapping[smartstrip_index], 0);
+			} else {
+				maschine_jam_write_midi_note(mj_driver_data, 0x90, mj_driver_data->midi_in_smartstrip_mapping[smartstrip_index], new_triplet.value);
+			}
+			maschine_jam_set_smartstrip_triplet(mj_driver_data->hid_report02_smartstrips, smartstrip_index, new_triplet);
 		}
 	}
+	return return_value;
 }
 
 static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_report *report, u8 *data, int size){
@@ -228,10 +271,10 @@ static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_r
 		} else if (report->id == 0x02 && size == MASCHINE_JAM_HID_REPORT_02_SMARTSTRIPS_BYTES + 1){
 			maschine_jam_parse_report02(mj_driver_data, report, &data[1], MASCHINE_JAM_HID_REPORT_02_SMARTSTRIPS_BYTES);
 		} else {
-			printk(KERN_ALERT "maschine_jam_raw_event() - report id is unknown or bad data size");
+			printk(KERN_ALERT "maschine_jam_raw_event() - error - report id is unknown or bad data size");
 		}
 	} else {
-		printk(KERN_ALERT "maschine_jam_raw_event() - bad parameters");
+		printk(KERN_ALERT "maschine_jam_raw_event() - error - bad parameters");
 	}
 	return return_value;
 }
@@ -347,7 +390,7 @@ static ssize_t maschine_jam_inputs_status_store(struct kobject *kobj, struct kob
 	}
 MJ_INPUTS_KNOB_ATTRIBUTE_GROUP(encoder, 0);
 //MJ_INPUTS_KNOB_ATTRIBUTE_GROUP(unknown_knob, 1);
-static const struct attribute_group *maschine_jam_inputs_knob_groups[] = {
+static const struct attribute_group *maschine_jam_inputs_knobs_groups[] = {
 	&maschine_jam_inputs_knob_encoder_group,
 	//&maschine_jam_inputs_knob_unknown_knob_group,
 	NULL
@@ -355,12 +398,12 @@ static const struct attribute_group *maschine_jam_inputs_knob_groups[] = {
 #define MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(_name, _index) \
 	struct maschine_jam_io_attribute maschine_jam_inputs_button_ ## _name ## _attribute = { \
 		.mapping_attribute = { \
-			.attr = {.name = "mapping", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+			.attr = {.name = "mapping", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
 			.show = maschine_jam_inputs_mapping_show, \
 			.store = maschine_jam_inputs_mapping_store, \
 		}, \
 		.status_attribute = { \
-			.attr = {.name = "status", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+			.attr = {.name = "status", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
 			.show = maschine_jam_inputs_status_show, \
 			.store = maschine_jam_inputs_status_store, \
 		}, \
@@ -497,7 +540,7 @@ MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(encoder_push, 116);
 //MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(unknown_118, 118);
 //MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(unknown_119, 119);
 
-static const struct attribute_group *maschine_jam_inputs_button_groups[] = {
+static const struct attribute_group *maschine_jam_inputs_buttons_groups[] = {
 	&maschine_jam_inputs_button_song_group,
 	&maschine_jam_inputs_button_scene_1_group,
 	&maschine_jam_inputs_button_scene_2_group,
@@ -728,30 +771,30 @@ static struct snd_rawmidi_ops maschine_jam_midi_out_ops = {
 static int maschine_jam_create_sound_card(struct maschine_jam_driver_data *mj_driver_data){
 	const char shortname[] = "MASCHINEJAM";
 	const char longname[] = "Maschine Jam";
-	int error;
+	int error_code;
 	struct snd_card *sound_card;
 	struct snd_rawmidi *rawmidi_interface;
 	
 	/* Setup sound card */
-	error = snd_card_new(&mj_driver_data->mj_hid_device->dev, SNDRV_DEFAULT_IDX1, SNDRV_DEFAULT_STR1, THIS_MODULE, 0, &sound_card);
-	if (error != 0) {
+	error_code = snd_card_new(&mj_driver_data->mj_hid_device->dev, SNDRV_DEFAULT_IDX1, SNDRV_DEFAULT_STR1, THIS_MODULE, 0, &sound_card);
+	if (error_code != 0) {
 		printk(KERN_ALERT "Failed to create Maschine Jam sound card.");
-		goto return_error;
+		goto return_error_code;
 	}
 	strncpy(sound_card->driver, shortname, sizeof(sound_card->driver));
 	strncpy(sound_card->shortname, shortname, sizeof(sound_card->shortname));
 	strncpy(sound_card->longname, longname, sizeof(sound_card->longname));
 	
 	/* Setup sound device */
-	error = snd_device_new(sound_card, SNDRV_DEV_LOWLEVEL, mj_driver_data->mj_hid_device, &maschine_jam_snd_device_ops);
-	if (error != 0) {
+	error_code = snd_device_new(sound_card, SNDRV_DEV_LOWLEVEL, mj_driver_data->mj_hid_device, &maschine_jam_snd_device_ops);
+	if (error_code != 0) {
 		printk(KERN_ALERT "Failed to create Maschine Jam sound device.");
 		goto failure_snd_card_free;
 	}
 
 	/* Set up rawmidi */
-	error = snd_rawmidi_new(sound_card, sound_card->shortname, 0, 1, 1, &rawmidi_interface);
-	if (error != 0) {
+	error_code = snd_rawmidi_new(sound_card, sound_card->shortname, 0, 1, 1, &rawmidi_interface);
+	if (error_code != 0) {
 		printk(KERN_ALERT "Failed to create Maschine Jam rawmidi device.");
 		goto failure_snd_device_free;
 	}
@@ -762,24 +805,25 @@ static int maschine_jam_create_sound_card(struct maschine_jam_driver_data *mj_dr
 	snd_rawmidi_set_ops(rawmidi_interface, SNDRV_RAWMIDI_STREAM_OUTPUT, &maschine_jam_midi_out_ops);
 
 	/* Register sound card */
-	error = snd_card_register(sound_card);
-	if (error != 0) {
+	error_code = snd_card_register(sound_card);
+	if (error_code != 0) {
 		printk(KERN_ALERT "Failed to register Maschine Jam sound card.");
 		goto failure_snd_device_free;
 	}
 	
 	mj_driver_data->sound_card = sound_card;
 	mj_driver_data->rawmidi_interface = rawmidi_interface;
-	goto return_error;
+	goto return_error_code;
 
 failure_snd_device_free:
 	snd_device_free(sound_card, mj_driver_data->mj_hid_device);
 failure_snd_card_free:
 	snd_card_free(sound_card);
-return_error:
-	return error;
+return_error_code:
+	return error_code;
 }
-static int maschine_jam_destroy_sound_card(struct maschine_jam_driver_data *mj_driver_data){
+static int maschine_jam_delete_sound_card(struct maschine_jam_driver_data *mj_driver_data){
+	int error_code = 0;
 	struct snd_card *sound_card;
 
 	if (mj_driver_data->sound_card != NULL) {
@@ -790,70 +834,160 @@ static int maschine_jam_destroy_sound_card(struct maschine_jam_driver_data *mj_d
 		snd_card_free_when_closed(sound_card);
 	}
 	
-	return 0;
+	return error_code;
 }
 
-static int maschine_jam_initialize_sysfs(struct kobject* device_kobject){
-	int error = 0;
+static int maschine_jam_create_sysfs_inputs_interface(struct maschine_jam_driver_data *mj_driver_data){
+	int error_code = 0;
 	struct kobject* directory_inputs = NULL;
 	struct kobject* directory_inputs_knobs = NULL;
 	struct kobject* directory_inputs_buttons = NULL;
 	struct kobject* directory_inputs_smartstrips = NULL;
+	struct kobject *device_kobject = &mj_driver_data->mj_hid_device->dev.kobj;
+
+	directory_inputs = kobject_create_and_add("inputs", device_kobject);
+	if (directory_inputs == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add inputs failed!");
+		error_code = -1;
+		goto return_error_code;
+	}
+	directory_inputs_knobs = kobject_create_and_add("knobs", directory_inputs);
+	if (directory_inputs_knobs == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add knobs failed!");
+		error_code = -1;
+		goto failure_delete_kobject_inputs;
+	}
+	error_code = sysfs_create_groups(directory_inputs_knobs, maschine_jam_inputs_knobs_groups);
+	if (error_code < 0) {
+		printk(KERN_ALERT "sysfs_create_groups knobs failed!");
+		goto failure_delete_kobject_inputs_knobs;
+	}
+	directory_inputs_buttons = kobject_create_and_add("buttons", directory_inputs);
+	if (directory_inputs_buttons == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add buttons failed!");
+		error_code = -1;
+		goto failure_remove_inputs_knobs_groups;
+	}
+	error_code = sysfs_create_groups(directory_inputs_buttons, maschine_jam_inputs_buttons_groups);
+	if (error_code < 0) {
+		printk(KERN_ALERT "sysfs_create_groups buttons failed!");
+		goto failure_delete_kobject_inputs_buttons;
+	}
+	directory_inputs_smartstrips = kobject_create_and_add("smartstrips", directory_inputs);
+	if (directory_inputs_smartstrips == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add smartstrips failed!");
+		error_code = -1;
+		goto failure_remove_inputs_buttons_groups;
+	}
+	//error_code = sysfs_create_groups(directory_inputs_buttons, maschine_jam_inputs_smartstrips_groups);
+	//if (error_code < 0) {
+		//printk(KERN_ALERT "sysfs_create_groups failed!");
+		//goto failure_delete_kobject_inputs_smartstrips;
+	//}
+	mj_driver_data->directory_inputs = directory_inputs;
+	mj_driver_data->directory_inputs_knobs = directory_inputs_knobs;
+	mj_driver_data->directory_inputs_buttons = directory_inputs_buttons;
+	mj_driver_data->directory_inputs_smartstrips = directory_inputs_smartstrips;
+	goto return_error_code;
+
+//failure_delete_kobject_inputs_smartstrips:
+//	kobject_del(directory_inputs_smartstrips);
+failure_remove_inputs_buttons_groups:
+	sysfs_remove_groups(directory_inputs_buttons, maschine_jam_inputs_buttons_groups);
+failure_delete_kobject_inputs_buttons:
+	kobject_del(directory_inputs_buttons);
+failure_remove_inputs_knobs_groups:
+	sysfs_remove_groups(directory_inputs_knobs, maschine_jam_inputs_knobs_groups);
+failure_delete_kobject_inputs_knobs:
+	kobject_del(directory_inputs_knobs);
+failure_delete_kobject_inputs:
+	kobject_del(directory_inputs);
+return_error_code:
+	return error_code;
+}
+static void maschine_jam_delete_sysfs_inputs_interface(struct maschine_jam_driver_data *mj_driver_data){
+	if (mj_driver_data->directory_inputs_smartstrips != NULL){
+		//sysfs_remove_groups(mj_driver_data->directory_inputs_smartstrips, maschine_jam_inputs_smartstrips_groups);
+		kobject_del(mj_driver_data->directory_inputs_smartstrips);
+	}
+	if (mj_driver_data->directory_inputs_buttons != NULL){
+		sysfs_remove_groups(mj_driver_data->directory_inputs_buttons, maschine_jam_inputs_buttons_groups);
+		kobject_del(mj_driver_data->directory_inputs_buttons);
+	}
+	if (mj_driver_data->directory_inputs_knobs != NULL){
+		sysfs_remove_groups(mj_driver_data->directory_inputs_knobs, maschine_jam_inputs_knobs_groups);
+		kobject_del(mj_driver_data->directory_inputs_knobs);
+	}
+	if (mj_driver_data->directory_inputs != NULL){
+		kobject_del(mj_driver_data->directory_inputs);
+	}
+}
+static int maschine_jam_create_sysfs_outputs_interface(struct maschine_jam_driver_data *mj_driver_data){
+	int error_code = 0;
 	struct kobject* directory_outputs = NULL;
 	struct kobject* directory_outputs_leds = NULL;
 	struct kobject* directory_outputs_leds_buttons = NULL;
 	struct kobject* directory_outputs_leds_smartstrips = NULL;
+	struct kobject *device_kobject = &mj_driver_data->mj_hid_device->dev.kobj;
 
-	directory_inputs = kobject_create_and_add("inputs", device_kobject);
-	if (directory_inputs == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add failed!");
-	}
-	directory_inputs_knobs = kobject_create_and_add("knobs", directory_inputs);
-	if (directory_inputs_buttons == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add failed!");
-	}
-	error = sysfs_create_groups(directory_inputs_knobs, maschine_jam_inputs_knob_groups);
-	if (error < 0) {
-		printk(KERN_ALERT "device_create_file failed!");
-	}
-	directory_inputs_buttons = kobject_create_and_add("buttons", directory_inputs);
-	if (directory_inputs_buttons == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add failed!");
-	}
-	error = sysfs_create_groups(directory_inputs_buttons, maschine_jam_inputs_button_groups);
-	if (error < 0) {
-		printk(KERN_ALERT "device_create_file failed!");
-	}
-	directory_inputs_smartstrips = kobject_create_and_add("smartstrips", directory_inputs);
-	if (directory_inputs_smartstrips == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add failed!");
-	}
 	directory_outputs = kobject_create_and_add("outputs", device_kobject);
 	if (directory_outputs == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add failed!");
+		printk(KERN_ALERT "kobject_create_and_add outputs failed!");
+		error_code = -1;
+		goto return_error_code;
 	}
 	directory_outputs_leds = kobject_create_and_add("leds", directory_outputs);
 	if (directory_outputs_leds == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add failed!");
+		printk(KERN_ALERT "kobject_create_and_add leds failed!");
+		error_code = -1;
+		goto failure_delete_kobject_outputs;
 	}
 	directory_outputs_leds_buttons = kobject_create_and_add("buttons", directory_outputs_leds);
 	if (directory_outputs_leds_buttons == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add failed!");
+		printk(KERN_ALERT "kobject_create_and_add buttons failed!");
+		error_code = -1;
+		goto failure_delete_kobject_outputs_leds;
 	}
 	directory_outputs_leds_smartstrips = kobject_create_and_add("smartstrips", directory_outputs_leds);
 	if (directory_outputs_leds_smartstrips == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add failed!");
+		printk(KERN_ALERT "kobject_create_and_add smartstrips failed!");
+		error_code = -1;
+		goto failure_delete_kobject_outputs_leds_buttons;
 	}
-	return error;
+	mj_driver_data->directory_outputs = directory_outputs;
+	mj_driver_data->directory_outputs_leds = directory_outputs_leds;
+	mj_driver_data->directory_outputs_leds_buttons = directory_outputs_leds_buttons;
+	mj_driver_data->directory_outputs_leds_smartstrips = directory_outputs_leds_smartstrips;
+	goto return_error_code;
+	
+//failure_delete_kobject_outputs_leds_smartstrips:
+	//kobject_del(directory_outputs_leds_smartstrips);
+failure_delete_kobject_outputs_leds_buttons:
+	kobject_del(directory_outputs_leds_buttons);
+failure_delete_kobject_outputs_leds:
+	kobject_del(directory_outputs_leds);
+failure_delete_kobject_outputs:
+	kobject_del(directory_outputs);
+return_error_code:
+	return error_code;
 }
-static int maschine_jam_deinitialize_sysfs(struct kobject* device_kobject){
-	int error = 0;
-	// TODO this stuff
-	//device_remove_file
-	return error;
+static void maschine_jam_delete_sysfs_outputs_interface(struct maschine_jam_driver_data *mj_driver_data){
+	if (mj_driver_data->directory_outputs_leds_smartstrips != NULL){
+		kobject_del(mj_driver_data->directory_outputs_leds_smartstrips);
+	}
+	if (mj_driver_data->directory_outputs_leds_buttons != NULL){
+		kobject_del(mj_driver_data->directory_outputs_leds_buttons);
+	}
+	if (mj_driver_data->directory_outputs_leds != NULL){
+		kobject_del(mj_driver_data->directory_outputs_leds);
+	}
+	if (mj_driver_data->directory_outputs != NULL){
+		kobject_del(mj_driver_data->directory_outputs);
+	}
 }
+
 static int maschine_jam_probe(struct hid_device *mj_hid_device, const struct hid_device_id *id){
-	int error;
+	int error_code;
 	struct usb_interface *intface = to_usb_interface(mj_hid_device->dev.parent);
 	unsigned short interface_number = intface->cur_altsetting->desc.bInterfaceNumber;
 	//unsigned long dd = id->driver_data;
@@ -862,62 +996,67 @@ static int maschine_jam_probe(struct hid_device *mj_hid_device, const struct hid
 	printk(KERN_ALERT "Found Maschine JAM!");
 	if (interface_number != 0){
 		printk(KERN_ALERT "Unexpected interface number %d was found. Unit may be in update mode.", interface_number);
-		error = -EBADR; /* Interface 1 is the Device Firmware Upgrade Interface */
-		goto return_error;
+		error_code = -EBADR; /* Interface 1 is the Device Firmware Upgrade Interface */
+		goto return_error_code;
 	}
 
 	mj_driver_data = kzalloc(sizeof(struct maschine_jam_driver_data), GFP_KERNEL);
 	if (mj_driver_data == NULL) {
 		printk(KERN_ALERT "kzalloc(sizeof(struct maschine_jam_driver_data), GFP_KERNEL); FAILED");
-		error = -ENOMEM;
-		goto return_error;
+		error_code = -ENOMEM;
+		goto return_error_code;
 	}
 	maschine_jam_initialize_driver_data(mj_driver_data, mj_hid_device);
-	error = maschine_jam_create_sound_card(mj_driver_data);
-	if (error != 0){
+	error_code = maschine_jam_create_sound_card(mj_driver_data);
+	if (error_code != 0){
 		printk(KERN_ALERT "Failed to create sound card.");
 		goto failure_free_driver_data;
 	}
-	error = maschine_jam_initialize_sysfs(&mj_driver_data->mj_hid_device->dev.kobj);
-	if (interface_number != 0){
-		printk(KERN_ALERT "Failed to initialize sysfs attributes.");
-		goto failure_destroy_sound_card;
+	error_code = maschine_jam_create_sysfs_inputs_interface(mj_driver_data);
+	if (error_code != 0){
+		printk(KERN_ALERT "Failed to create sysfs inputs interface attributes.");
+		goto failure_delete_sound_card;
+	}
+	error_code = maschine_jam_create_sysfs_outputs_interface(mj_driver_data);
+	if (error_code != 0){
+		printk(KERN_ALERT "Failed to create sysfs outputs interface attributes.");
+		goto failure_delete_sysfs_inputs_interface;
 	}
 	
 	hid_set_drvdata(mj_hid_device, mj_driver_data);
 
 	// TODO validate hid fields from some report
-	error = hid_parse(mj_hid_device);
-	if (error) {
+	error_code = hid_parse(mj_hid_device);
+	if (error_code != 0) {
 		printk(KERN_ALERT "hid parse failed");
-		goto failure_deinitialize_sysfs;
+		goto failure_delete_sysfs_outputs_interface;
 	}
-	error = hid_hw_start(mj_hid_device, HID_CONNECT_DEFAULT);
-	if (error) {
+	error_code = hid_hw_start(mj_hid_device, HID_CONNECT_DEFAULT);
+	if (error_code != 0) {
 		printk(KERN_ALERT "hw start failed");
-		goto failure_deinitialize_sysfs;
+		goto failure_delete_sysfs_outputs_interface;
 	}
-	error = hid_hw_open(mj_hid_device);
-	if (error) {
+	error_code = hid_hw_open(mj_hid_device);
+	if (error_code != 0) {
 		printk(KERN_ALERT "hw open failed");
-		goto failure_deinitialize_sysfs;
-	}
-	if (error < 0)
 		goto failure_hid_hw_stop;
+	}
 
-	printk(KERN_ALERT "Maschine JAM probe() finished - %d", error);
-	goto return_error;
+	printk(KERN_ALERT "Maschine JAM probe() finished - %d", error_code);
+	goto return_error_code;
 
 failure_hid_hw_stop:
 	hid_hw_stop(mj_hid_device);
-failure_deinitialize_sysfs:
-	maschine_jam_deinitialize_sysfs(&mj_driver_data->mj_hid_device->dev.kobj);
-failure_destroy_sound_card:
-	maschine_jam_destroy_sound_card(mj_driver_data);
+failure_delete_sysfs_outputs_interface:
+	maschine_jam_delete_sysfs_outputs_interface(mj_driver_data);
+failure_delete_sysfs_inputs_interface:
+	maschine_jam_delete_sysfs_inputs_interface(mj_driver_data);
+failure_delete_sound_card:
+	maschine_jam_delete_sound_card(mj_driver_data);
 failure_free_driver_data:
 	kfree(mj_driver_data);
-return_error:
-	return error;
+return_error_code:
+	return error_code;
 }
 
 static void maschine_jam_remove(struct hid_device *mj_hid_device){
@@ -927,7 +1066,9 @@ static void maschine_jam_remove(struct hid_device *mj_hid_device){
 		mj_driver_data = hid_get_drvdata(mj_hid_device);
 
 		hid_hw_stop(mj_hid_device);
-		maschine_jam_deinitialize_sysfs(&mj_hid_device->dev.kobj);
+		maschine_jam_delete_sound_card(mj_driver_data);
+		maschine_jam_delete_sysfs_inputs_interface(mj_driver_data);
+		maschine_jam_delete_sysfs_outputs_interface(mj_driver_data);
 		kfree(mj_driver_data);
 	}
 
