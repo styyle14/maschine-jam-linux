@@ -264,6 +264,10 @@ static inline void maschine_jam_set_smartstrip_triplet(u8 *data, uint8_t index, 
 	smartstrip_data[1] = triplet.timestamp >> 8;
 	smartstrip_data[2] = triplet.value;	
 }
+static inline void maschine_jam_set_smartstrip_triplet_value(u8 *data, uint8_t index, uint8_t value){
+	u8 *smartstrip_data = &data[index * 3];
+	smartstrip_data[2] = value;	
+}
 static int maschine_jam_parse_report02(struct maschine_jam_driver_data *mj_driver_data, struct hid_report *report, u8 *data, int size){
 	int return_value = 0;
 	unsigned int smartstrip_data_index, smartstrip_index;
@@ -310,17 +314,17 @@ static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_r
 	return return_value;
 }
 
-typedef enum maschine_jam_io_attribute_type_e {
+enum maschine_jam_io_attribute_type {
 	IO_ATTRIBUTE_KNOB,
 	IO_ATTRIBUTE_BUTTON,
 	IO_ATTRIBUTE_SMARTSTRIP,
-} maschine_jam_io_attribute_type;
+};
 struct maschine_jam_io_attribute {
 	struct kobj_attribute type_attribute;
 	struct kobj_attribute channel_attribute;
 	struct kobj_attribute key_attribute;
 	struct kobj_attribute status_attribute;
-	maschine_jam_io_attribute_type io_attribute_type;
+	enum maschine_jam_io_attribute_type io_attribute_type;
 	uint8_t io_index;
 };
 static ssize_t maschine_jam_inputs_type_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
@@ -337,6 +341,8 @@ static ssize_t maschine_jam_inputs_type_show(struct kobject *kobj, struct kobj_a
 		midi_type = mj_driver_data->midi_in_knob_configs[io_attribute->io_index].type;
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		midi_type = mj_driver_data->midi_in_button_configs[io_attribute->io_index].type;
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+		midi_type = mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index].type;
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
 	}
@@ -375,6 +381,8 @@ static ssize_t maschine_jam_inputs_type_store(struct kobject *kobj, struct kobj_
 		mj_driver_data->midi_in_knob_configs[io_attribute->io_index].type = midi_type;
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		mj_driver_data->midi_in_button_configs[io_attribute->io_index].type = midi_type;
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+		mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index].type = midi_type;
 	}
 	return count;
 }
@@ -391,6 +399,8 @@ static ssize_t maschine_jam_inputs_channel_show(struct kobject *kobj, struct kob
 		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_knob_configs[io_attribute->io_index].channel);
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_button_configs[io_attribute->io_index].channel);
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index].channel);
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
 	}
@@ -410,6 +420,8 @@ static ssize_t maschine_jam_inputs_channel_store(struct kobject *kobj, struct ko
 		mj_driver_data->midi_in_knob_configs[io_attribute->io_index].channel = store_value & 0xF;
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		mj_driver_data->midi_in_button_configs[io_attribute->io_index].channel = store_value & 0xF;
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+		mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index].channel = store_value & 0xF;
 	}
 	return count;
 }
@@ -426,6 +438,8 @@ static ssize_t maschine_jam_inputs_key_show(struct kobject *kobj, struct kobj_at
 		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_knob_configs[io_attribute->io_index].key);
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_button_configs[io_attribute->io_index].key);
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index].key);
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
 	}
@@ -445,6 +459,8 @@ static ssize_t maschine_jam_inputs_key_store(struct kobject *kobj, struct kobj_a
 		mj_driver_data->midi_in_knob_configs[io_attribute->io_index].key = store_value & 0x7F;
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		mj_driver_data->midi_in_button_configs[io_attribute->io_index].key = store_value & 0x7F;
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+		mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index].key = store_value & 0x7F;
 	}
 	return count;
 }
@@ -461,6 +477,8 @@ static ssize_t maschine_jam_inputs_status_show(struct kobject *kobj, struct kobj
 		return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_knob_nibble(mj_driver_data->hid_report01_knobs, io_attribute->io_index));
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_button_bit(mj_driver_data->hid_report01_buttons, io_attribute->io_index));
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+		return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_smartstrip_triplet(mj_driver_data->hid_report02_smartstrips, io_attribute->io_index).value);
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
 	}
@@ -484,28 +502,30 @@ static ssize_t maschine_jam_inputs_status_store(struct kobject *kobj, struct kob
 		} else {
 			maschine_jam_set_button_bit(mj_driver_data->hid_report01_buttons, io_attribute->io_index);
 		}
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+		maschine_jam_set_smartstrip_triplet_value(mj_driver_data->hid_report02_smartstrips, io_attribute->io_index, store_value & 0xFF);
 	}
 	return count;
 }
 #define MJ_INPUTS_KNOB_ATTRIBUTE_GROUP(_name, _index) \
 	struct maschine_jam_io_attribute maschine_jam_inputs_knob_ ## _name ## _attribute = { \
 		.type_attribute = { \
-			.attr = {.name = "type", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+			.attr = {.name = "type", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
 			.show = maschine_jam_inputs_type_show, \
 			.store = maschine_jam_inputs_type_store, \
 		}, \
 		.channel_attribute = { \
-			.attr = {.name = "channel", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+			.attr = {.name = "channel", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
 			.show = maschine_jam_inputs_channel_show, \
 			.store = maschine_jam_inputs_channel_store, \
 		}, \
 		.key_attribute = { \
-			.attr = {.name = "key", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+			.attr = {.name = "key", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
 			.show = maschine_jam_inputs_key_show, \
 			.store = maschine_jam_inputs_key_store, \
 		}, \
 		.status_attribute = { \
-			.attr = {.name = "status", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+			.attr = {.name = "status", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
 			.show = maschine_jam_inputs_status_show, \
 			.store = maschine_jam_inputs_status_store, \
 		}, \
@@ -533,12 +553,12 @@ static const struct attribute_group *maschine_jam_inputs_knobs_groups[] = {
 #define MJ_INPUTS_BUTTON_ATTRIBUTE_GROUP(_name, _index) \
 	struct maschine_jam_io_attribute maschine_jam_inputs_button_ ## _name ## _attribute = { \
 		.type_attribute = { \
-			.attr = {.name = "type", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+			.attr = {.name = "type", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
 			.show = maschine_jam_inputs_type_show, \
 			.store = maschine_jam_inputs_type_store, \
 		}, \
 		.channel_attribute = { \
-			.attr = {.name = "channel", .mode = VERIFY_OCTAL_PERMISSIONS(MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS)}, \
+			.attr = {.name = "channel", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
 			.show = maschine_jam_inputs_channel_show, \
 			.store = maschine_jam_inputs_channel_store, \
 		}, \
@@ -810,7 +830,77 @@ static const struct attribute_group *maschine_jam_inputs_buttons_groups[] = {
 	//&maschine_jam_inputs_button_unknown_119_group,
 	NULL
 };
-
+#define MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(_name, _index) \
+	struct maschine_jam_io_attribute maschine_jam_inputs_smartstrip_ ## _name ## _attribute = { \
+		.type_attribute = { \
+			.attr = {.name = "type", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
+			.show = maschine_jam_inputs_type_show, \
+			.store = maschine_jam_inputs_type_store, \
+		}, \
+		.channel_attribute = { \
+			.attr = {.name = "channel", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
+			.show = maschine_jam_inputs_channel_show, \
+			.store = maschine_jam_inputs_channel_store, \
+		}, \
+		.key_attribute = { \
+			.attr = {.name = "key", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
+			.show = maschine_jam_inputs_key_show, \
+			.store = maschine_jam_inputs_key_store, \
+		}, \
+		.status_attribute = { \
+			.attr = {.name = "status", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
+			.show = maschine_jam_inputs_status_show, \
+			.store = maschine_jam_inputs_status_store, \
+		}, \
+		.io_attribute_type = IO_ATTRIBUTE_SMARTSTRIP, \
+		.io_index = _index, \
+	}; \
+	static struct attribute *maschine_jam_inputs_smartstrip_ ## _name ## _attributes[] = { \
+		&maschine_jam_inputs_smartstrip_ ## _name ## _attribute.type_attribute.attr, \
+		&maschine_jam_inputs_smartstrip_ ## _name ## _attribute.channel_attribute.attr, \
+		&maschine_jam_inputs_smartstrip_ ## _name ## _attribute.key_attribute.attr, \
+		&maschine_jam_inputs_smartstrip_ ## _name ## _attribute.status_attribute.attr, \
+		NULL \
+	}; \
+	static const struct attribute_group maschine_jam_inputs_smartstrip_ ## _name ## _group = { \
+		.name = #_name, \
+		.attrs = maschine_jam_inputs_smartstrip_ ## _name ## _attributes, \
+	}
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(1A, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(1B, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(2A, 2);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(2B, 3);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(3A, 4);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(3B, 5);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(4A, 6);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(4B, 7);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(5A, 8);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(5B, 9);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(6A, 10);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(6B, 11);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(7A, 12);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(7B, 13);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(8A, 14);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(8B, 15);
+static const struct attribute_group *maschine_jam_inputs_smartstrips_groups[] = {
+	&maschine_jam_inputs_smartstrip_1A_group,
+	&maschine_jam_inputs_smartstrip_1B_group,
+	&maschine_jam_inputs_smartstrip_2A_group,
+	&maschine_jam_inputs_smartstrip_2B_group,
+	&maschine_jam_inputs_smartstrip_3A_group,
+	&maschine_jam_inputs_smartstrip_3B_group,
+	&maschine_jam_inputs_smartstrip_4A_group,
+	&maschine_jam_inputs_smartstrip_4B_group,
+	&maschine_jam_inputs_smartstrip_5A_group,
+	&maschine_jam_inputs_smartstrip_5B_group,
+	&maschine_jam_inputs_smartstrip_6A_group,
+	&maschine_jam_inputs_smartstrip_6B_group,
+	&maschine_jam_inputs_smartstrip_7A_group,
+	&maschine_jam_inputs_smartstrip_7B_group,
+	&maschine_jam_inputs_smartstrip_8A_group,
+	&maschine_jam_inputs_smartstrip_8B_group,
+	NULL
+};
 
 static int maschine_jam_snd_dev_free(struct snd_device *dev){
 	return 0;
@@ -1026,19 +1116,19 @@ static int maschine_jam_create_sysfs_inputs_interface(struct maschine_jam_driver
 		error_code = -1;
 		goto failure_remove_inputs_buttons_groups;
 	}
-	//error_code = sysfs_create_groups(directory_inputs_buttons, maschine_jam_inputs_smartstrips_groups);
-	//if (error_code < 0) {
-		//printk(KERN_ALERT "sysfs_create_groups failed!");
-		//goto failure_delete_kobject_inputs_smartstrips;
-	//}
+	error_code = sysfs_create_groups(directory_inputs_smartstrips, maschine_jam_inputs_smartstrips_groups);
+	if (error_code < 0) {
+		printk(KERN_ALERT "sysfs_create_groups failed!");
+		goto failure_delete_kobject_inputs_smartstrips;
+	}
 	mj_driver_data->directory_inputs = directory_inputs;
 	mj_driver_data->directory_inputs_knobs = directory_inputs_knobs;
 	mj_driver_data->directory_inputs_buttons = directory_inputs_buttons;
 	mj_driver_data->directory_inputs_smartstrips = directory_inputs_smartstrips;
 	goto return_error_code;
 
-//failure_delete_kobject_inputs_smartstrips:
-//	kobject_del(directory_inputs_smartstrips);
+failure_delete_kobject_inputs_smartstrips:
+	kobject_del(directory_inputs_smartstrips);
 failure_remove_inputs_buttons_groups:
 	sysfs_remove_groups(directory_inputs_buttons, maschine_jam_inputs_buttons_groups);
 failure_delete_kobject_inputs_buttons:
@@ -1054,7 +1144,7 @@ return_error_code:
 }
 static void maschine_jam_delete_sysfs_inputs_interface(struct maschine_jam_driver_data *mj_driver_data){
 	if (mj_driver_data->directory_inputs_smartstrips != NULL){
-		//sysfs_remove_groups(mj_driver_data->directory_inputs_smartstrips, maschine_jam_inputs_smartstrips_groups);
+		sysfs_remove_groups(mj_driver_data->directory_inputs_smartstrips, maschine_jam_inputs_smartstrips_groups);
 		kobject_del(mj_driver_data->directory_inputs_smartstrips);
 	}
 	if (mj_driver_data->directory_inputs_buttons != NULL){
