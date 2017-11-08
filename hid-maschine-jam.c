@@ -19,7 +19,12 @@
 #define MASCHINE_JAM_HID_REPORT_01_DATA_BYTES (MASCHINE_JAM_HID_REPORT_01_KNOBS_BYTES + MASCHINE_JAM_HID_REPORT_01_BUTTONS_BYTES) // 16
 #define MASCHINE_JAM_HID_REPORT_01_BYTES (MASCHINE_JAM_HID_REPORT_ID_BYTES + MASCHINE_JAM_HID_REPORT_01_DATA_BYTES) // 17
 #define MASCHINE_JAM_NUMBER_SMARTSTRIPS 8
-#define MASCHINE_JAM_NUMBER_SMARTSTRIP_TOUCHES 2
+#define MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGERS 2
+#define MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGER_MODES 2
+enum maschine_jam_smartstrip_finger_mode{
+	MJ_SMARTSTRIP_FINGER_MODE_TOUCH = 0,
+	MJ_SMARTSTRIP_FINGER_MODE_SLIDE = 1
+};
 #define MASCHINE_JAM_HID_REPORT_02_SMARTSTRIP_TIMESTAMP_BITS 16
 #define MASCHINE_JAM_HID_REPORT_02_SMARTSTRIP_TOUCH_VALUE_BITS 16
 #define MASCHINE_JAM_HID_REPORT_02_SMARTSTRIP_BITS (MASCHINE_JAM_HID_REPORT_02_SMARTSTRIP_TIMESTAMP_BITS + (MASCHINE_JAM_HID_REPORT_02_SMARTSTRIP_TOUCH_VALUE_BITS * 2)) // 48
@@ -55,7 +60,7 @@ struct maschine_jam_driver_data {
 	uint8_t					hid_report01_data_knobs[MASCHINE_JAM_HID_REPORT_01_KNOBS_BYTES];
 	struct maschine_jam_midi_config	midi_in_button_configs[MASCHINE_JAM_NUMBER_BUTTONS];
 	uint8_t					hid_report01_data_buttons[MASCHINE_JAM_HID_REPORT_01_BUTTONS_BYTES];
-	struct maschine_jam_midi_config	midi_in_smartstrip_configs[MASCHINE_JAM_NUMBER_SMARTSTRIPS][MASCHINE_JAM_NUMBER_SMARTSTRIP_TOUCHES];
+	struct maschine_jam_midi_config	midi_in_smartstrip_configs[MASCHINE_JAM_NUMBER_SMARTSTRIPS][MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGERS][MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGER_MODES];
 	uint8_t					hid_report02_data_smartstrips[MASCHINE_JAM_HID_REPORT_02_BYTES];
 
 	// Outputs
@@ -98,35 +103,42 @@ struct maschine_jam_driver_data {
 
 static void maschine_jam_hid_write_report(struct work_struct *);
 static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data *mj_driver_data, struct hid_device *mj_hid_device){
-	unsigned int i, j;
+	unsigned int i, j, k, temp_key;
 	
 	// HID Device
 	mj_driver_data->mj_hid_device = mj_hid_device;
 	
 	// Inputs
+	temp_key = 0;
 	for(i = 0; i < MASCHINE_JAM_NUMBER_KNOBS; i++){
 		mj_driver_data->midi_in_knob_configs[i].type = MJ_MIDI_TYPE_NOTE;
 		mj_driver_data->midi_in_knob_configs[i].channel = 0;
-		mj_driver_data->midi_in_knob_configs[i].key = i;
+		mj_driver_data->midi_in_knob_configs[i].key = temp_key;
 		mj_driver_data->midi_in_knob_configs[i].value_min = 0;
 		mj_driver_data->midi_in_knob_configs[i].value_max = 0x7F; // 127
+		temp_key++;
 	}
 	memset(mj_driver_data->hid_report01_data_knobs, 0, sizeof(mj_driver_data->hid_report01_data_knobs));
 	for(i = 0; i < MASCHINE_JAM_NUMBER_BUTTONS; i++){
 		mj_driver_data->midi_in_button_configs[i].type = MJ_MIDI_TYPE_NOTE;
 		mj_driver_data->midi_in_button_configs[i].channel = 0;
-		mj_driver_data->midi_in_button_configs[i].key = i + MASCHINE_JAM_NUMBER_KNOBS;
+		mj_driver_data->midi_in_button_configs[i].key = temp_key;
 		mj_driver_data->midi_in_button_configs[i].value_min = 0;
 		mj_driver_data->midi_in_button_configs[i].value_max = 0x7F; // 127
+		temp_key++;
 	}
 	memset(mj_driver_data->hid_report01_data_buttons, 0, sizeof(mj_driver_data->hid_report01_data_buttons));
+	temp_key = 0;
 	for(i = 0; i < MASCHINE_JAM_NUMBER_SMARTSTRIPS; i++){
-		for(j=0; j < MASCHINE_JAM_NUMBER_SMARTSTRIP_TOUCHES; j++){
-			mj_driver_data->midi_in_smartstrip_configs[i][j].type = MJ_MIDI_TYPE_CONTROL_CHANGE;
-			mj_driver_data->midi_in_smartstrip_configs[i][j].channel = 0;
-			mj_driver_data->midi_in_smartstrip_configs[i][j].key = (i * MASCHINE_JAM_NUMBER_SMARTSTRIP_TOUCHES) + j;
-			mj_driver_data->midi_in_smartstrip_configs[i][j].value_min = 0;
-			mj_driver_data->midi_in_smartstrip_configs[i][j].value_max = 0x7F; // 127
+		for(j=0; j < MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGERS; j++){
+			for(k=0; k < MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGER_MODES; k++){
+				mj_driver_data->midi_in_smartstrip_configs[i][j][k].type = MJ_MIDI_TYPE_CONTROL_CHANGE;
+				mj_driver_data->midi_in_smartstrip_configs[i][j][k].channel = 1;
+				mj_driver_data->midi_in_smartstrip_configs[i][j][k].key = temp_key;
+				mj_driver_data->midi_in_smartstrip_configs[i][j][k].value_min = 0;
+				mj_driver_data->midi_in_smartstrip_configs[i][j][k].value_max = 0x7F; // 127
+				temp_key++;
+			}
 		}
 	}
 	memset(mj_driver_data->hid_report02_data_smartstrips, 0, sizeof(mj_driver_data->hid_report02_data_smartstrips));
@@ -277,7 +289,7 @@ static int maschine_jam_process_report01_buttons_data(struct maschine_jam_driver
 }
 struct maschine_jam_smartstrip {
 	uint16_t timestamp;
-	uint16_t touch_value[MASCHINE_JAM_NUMBER_SMARTSTRIP_TOUCHES];
+	uint16_t touch_value[MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGERS];
 };
 static inline struct maschine_jam_smartstrip maschine_jam_get_smartstrip(u8 *data, uint8_t index){
 	u8 *smartstrip_data = &data[index * MASCHINE_JAM_HID_REPORT_02_SMARTSTRIP_BITS / 8];
@@ -318,18 +330,29 @@ static int maschine_jam_process_report02_smartstrips_data(struct maschine_jam_dr
 		old_smartstrip = maschine_jam_get_smartstrip(mj_driver_data->hid_report02_data_smartstrips, smartstrip_index);
 		new_smartstrip = maschine_jam_get_smartstrip(data, smartstrip_index);
 		smartstrip_data_is_dirty = (old_smartstrip.timestamp != new_smartstrip.timestamp);
-		for (touch_index = 0; touch_index < MASCHINE_JAM_NUMBER_SMARTSTRIP_TOUCHES; touch_index++){
+		for (touch_index = 0; touch_index < MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGERS; touch_index++){
 			if (old_smartstrip.touch_value[touch_index] != new_smartstrip.touch_value[touch_index]){
 				//printk(KERN_ALERT "old_smartstrip: smartstrip_index: %d, timestamp: %04X, touch_value[0] %04X, touch_value[1] %04X", smartstrip_index, old_smartstrip.timestamp, old_smartstrip.touch_value[0], old_smartstrip.touch_value[1]);
 				//printk(KERN_ALERT "new_smartstrip: smartstrip_index: %d, timestamp: %04X, touch_value[0] %04X, touch_value[1] %04X", smartstrip_index, new_smartstrip.timestamp, new_smartstrip.touch_value[0], new_smartstrip.touch_value[1]);
 				smartstrip_data_is_dirty = 1;
-				smartstrip_config = &mj_driver_data->midi_in_smartstrip_configs[smartstrip_index][touch_index];
-				maschine_jam_write_midi_note(
-					mj_driver_data,
-					smartstrip_config->type | smartstrip_config->channel,
-					smartstrip_config->key,
-					new_smartstrip.touch_value[touch_index] >> 3
-				);
+				if (old_smartstrip.touch_value[touch_index] == 0 || new_smartstrip.touch_value[touch_index] == 0){
+					smartstrip_config = &mj_driver_data->midi_in_smartstrip_configs[smartstrip_index][touch_index][MJ_SMARTSTRIP_FINGER_MODE_TOUCH];
+					maschine_jam_write_midi_note(
+						mj_driver_data,
+						smartstrip_config->type | smartstrip_config->channel,
+						smartstrip_config->key,
+						new_smartstrip.touch_value[touch_index] ? 127 : 0
+					);
+				}
+				if (new_smartstrip.touch_value[touch_index] != 0){
+					smartstrip_config = &mj_driver_data->midi_in_smartstrip_configs[smartstrip_index][touch_index][MJ_SMARTSTRIP_FINGER_MODE_SLIDE];
+					maschine_jam_write_midi_note(
+						mj_driver_data,
+						smartstrip_config->type | smartstrip_config->channel,
+						smartstrip_config->key,
+						new_smartstrip.touch_value[touch_index] >> 3
+					);
+				}
 			}
 		}
 		if (smartstrip_data_is_dirty){
@@ -348,12 +371,12 @@ static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_r
 		mj_driver_data = hid_get_drvdata(mj_hid_device);
 		if (report->id == 0x01 && size == MASCHINE_JAM_HID_REPORT_01_BYTES){
 			// !!! Validate report
-			// smartstrip_index < smartstrips_hid_field->report_count == MASCHINE_JAM_NUMBER_SMARTSTRIPS * MASCHINE_JAM_NUMBER_SMARTSTRIP_TOUCHES
+			// smartstrip_index < smartstrips_hid_field->report_count == MASCHINE_JAM_NUMBER_SMARTSTRIPS * MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGERS
 			maschine_jam_process_report01_knobs_data(mj_driver_data, &data[MASCHINE_JAM_HID_REPORT_ID_BYTES]);
 			maschine_jam_process_report01_buttons_data(mj_driver_data, &data[MASCHINE_JAM_HID_REPORT_ID_BYTES + MASCHINE_JAM_HID_REPORT_01_KNOBS_BYTES]);
 		} else if (report->id == 0x02 && size == MASCHINE_JAM_HID_REPORT_02_BYTES){
 			// !!! Validate report
-			// smartstrip_index < smartstrips_hid_field->report_count == MASCHINE_JAM_NUMBER_SMARTSTRIPS * MASCHINE_JAM_NUMBER_SMARTSTRIP_TOUCHES
+			// smartstrip_index < smartstrips_hid_field->report_count == MASCHINE_JAM_NUMBER_SMARTSTRIPS * MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGERS
 			maschine_jam_process_report02_smartstrips_data(mj_driver_data, &data[MASCHINE_JAM_HID_REPORT_ID_BYTES]);
 		} else {
 			printk(KERN_ALERT "maschine_jam_raw_event() - error - report id is unknown or bad data size");
@@ -376,6 +399,8 @@ struct maschine_jam_io_attribute {
 	struct kobj_attribute status_attribute;
 	enum maschine_jam_io_attribute_type io_attribute_type;
 	uint8_t io_index;
+	uint8_t smartstrip_finger;
+	uint8_t smartstrip_finger_mode;
 };
 static ssize_t maschine_jam_inputs_type_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
 	struct kobject *maschine_jam_inputs_button_dir = kobj;
@@ -392,7 +417,7 @@ static ssize_t maschine_jam_inputs_type_show(struct kobject *kobj, struct kobj_a
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		midi_type = mj_driver_data->midi_in_button_configs[io_attribute->io_index].type;
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
-		midi_type = mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index / 2][io_attribute->io_index % 2].type;
+		midi_type = mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].type;
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
 	}
@@ -432,7 +457,7 @@ static ssize_t maschine_jam_inputs_type_store(struct kobject *kobj, struct kobj_
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		mj_driver_data->midi_in_button_configs[io_attribute->io_index].type = midi_type;
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
-		mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index / 2][io_attribute->io_index % 2].type = midi_type;
+		mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].type = midi_type;
 	}
 	return count;
 }
@@ -450,7 +475,7 @@ static ssize_t maschine_jam_inputs_channel_show(struct kobject *kobj, struct kob
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_button_configs[io_attribute->io_index].channel);
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
-		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index / 2][io_attribute->io_index % 2].channel);
+		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].channel);
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
 	}
@@ -471,7 +496,7 @@ static ssize_t maschine_jam_inputs_channel_store(struct kobject *kobj, struct ko
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		mj_driver_data->midi_in_button_configs[io_attribute->io_index].channel = store_value & 0xF;
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
-		mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index / 2][io_attribute->io_index % 2].channel = store_value & 0xF;
+		mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].channel = store_value & 0xF;
 	}
 	return count;
 }
@@ -489,7 +514,7 @@ static ssize_t maschine_jam_inputs_key_show(struct kobject *kobj, struct kobj_at
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_button_configs[io_attribute->io_index].key);
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
-		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index / 2][io_attribute->io_index % 2].key);
+		return scnprintf(buf, PAGE_SIZE, "%d\n", mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].key);
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
 	}
@@ -510,7 +535,7 @@ static ssize_t maschine_jam_inputs_key_store(struct kobject *kobj, struct kobj_a
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
 		mj_driver_data->midi_in_button_configs[io_attribute->io_index].key = store_value & 0x7F;
 	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
-		mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index / 2][io_attribute->io_index % 2].key = store_value & 0x7F;
+		mj_driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].key = store_value & 0x7F;
 	}
 	return count;
 }
@@ -581,6 +606,8 @@ static ssize_t maschine_jam_inputs_status_store(struct kobject *kobj, struct kob
 		}, \
 		.io_attribute_type = IO_ATTRIBUTE_KNOB, \
 		.io_index = _index, \
+		.smartstrip_finger = 0, \
+		.smartstrip_finger_mode = 0, \
 	}; \
 	static struct attribute *maschine_jam_inputs_knob_ ## _name ## _attributes[] = { \
 		&maschine_jam_inputs_knob_ ## _name ## _attribute.type_attribute.attr, \
@@ -624,6 +651,8 @@ static const struct attribute_group *maschine_jam_inputs_knobs_groups[] = {
 		}, \
 		.io_attribute_type = IO_ATTRIBUTE_BUTTON, \
 		.io_index = _index, \
+		.smartstrip_finger = 0, \
+		.smartstrip_finger_mode = 0, \
 	}; \
 	static struct attribute *maschine_jam_inputs_button_ ## _name ## _attributes[] = { \
 		&maschine_jam_inputs_button_ ## _name ## _attribute.type_attribute.attr, \
@@ -880,7 +909,7 @@ static const struct attribute_group *maschine_jam_inputs_buttons_groups[] = {
 	//&maschine_jam_inputs_button_unknown_119_group,
 	NULL
 };
-#define MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(_name, _index) \
+#define MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(_name, _index, _smartstrip_finger, _smartstrip_finger_mode) \
 	struct maschine_jam_io_attribute maschine_jam_inputs_smartstrip_ ## _name ## _attribute = { \
 		.type_attribute = { \
 			.attr = {.name = "type", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
@@ -904,6 +933,8 @@ static const struct attribute_group *maschine_jam_inputs_buttons_groups[] = {
 		}, \
 		.io_attribute_type = IO_ATTRIBUTE_SMARTSTRIP, \
 		.io_index = _index, \
+		.smartstrip_finger = _smartstrip_finger, \
+		.smartstrip_finger_mode = _smartstrip_finger_mode, \
 	}; \
 	static struct attribute *maschine_jam_inputs_smartstrip_ ## _name ## _attributes[] = { \
 		&maschine_jam_inputs_smartstrip_ ## _name ## _attribute.type_attribute.attr, \
@@ -916,39 +947,71 @@ static const struct attribute_group *maschine_jam_inputs_buttons_groups[] = {
 		.name = #_name, \
 		.attrs = maschine_jam_inputs_smartstrip_ ## _name ## _attributes, \
 	}
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(1A, 0);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(1B, 1);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(2A, 2);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(2B, 3);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(3A, 4);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(3B, 5);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(4A, 6);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(4B, 7);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(5A, 8);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(5B, 9);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(6A, 10);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(6B, 11);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(7A, 12);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(7B, 13);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(8A, 14);
-MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(8B, 15);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(1AT, 0, 0, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(1AS, 0, 0, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(1BT, 0, 1, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(1BS, 0, 1, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(2AT, 1, 0, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(2AS, 1, 0, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(2BT, 1, 1, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(2BS, 1, 1, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(3AT, 2, 0, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(3AS, 2, 0, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(3BT, 2, 1, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(3BS, 2, 1, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(4AT, 3, 0, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(4AS, 3, 0, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(4BT, 3, 1, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(4BS, 3, 1, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(5AT, 4, 0, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(5AS, 4, 0, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(5BT, 4, 1, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(5BS, 4, 1, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(6AT, 5, 0, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(6AS, 5, 0, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(6BT, 5, 1, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(6BS, 5, 1, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(7AT, 6, 0, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(7AS, 6, 0, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(7BT, 6, 1, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(7BS, 6, 1, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(8AT, 7, 0, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(8AS, 7, 0, 1);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(8BT, 7, 1, 0);
+MJ_INPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(8BS, 7, 1, 1);
 static const struct attribute_group *maschine_jam_inputs_smartstrips_groups[] = {
-	&maschine_jam_inputs_smartstrip_1A_group,
-	&maschine_jam_inputs_smartstrip_1B_group,
-	&maschine_jam_inputs_smartstrip_2A_group,
-	&maschine_jam_inputs_smartstrip_2B_group,
-	&maschine_jam_inputs_smartstrip_3A_group,
-	&maschine_jam_inputs_smartstrip_3B_group,
-	&maschine_jam_inputs_smartstrip_4A_group,
-	&maschine_jam_inputs_smartstrip_4B_group,
-	&maschine_jam_inputs_smartstrip_5A_group,
-	&maschine_jam_inputs_smartstrip_5B_group,
-	&maschine_jam_inputs_smartstrip_6A_group,
-	&maschine_jam_inputs_smartstrip_6B_group,
-	&maschine_jam_inputs_smartstrip_7A_group,
-	&maschine_jam_inputs_smartstrip_7B_group,
-	&maschine_jam_inputs_smartstrip_8A_group,
-	&maschine_jam_inputs_smartstrip_8B_group,
+	&maschine_jam_inputs_smartstrip_1AT_group,
+	&maschine_jam_inputs_smartstrip_1AS_group,
+	&maschine_jam_inputs_smartstrip_1BT_group,
+	&maschine_jam_inputs_smartstrip_1BS_group,
+	&maschine_jam_inputs_smartstrip_2AT_group,
+	&maschine_jam_inputs_smartstrip_2AS_group,
+	&maschine_jam_inputs_smartstrip_2BT_group,
+	&maschine_jam_inputs_smartstrip_2BS_group,
+	&maschine_jam_inputs_smartstrip_3AT_group,
+	&maschine_jam_inputs_smartstrip_3AS_group,
+	&maschine_jam_inputs_smartstrip_3BT_group,
+	&maschine_jam_inputs_smartstrip_3BS_group,
+	&maschine_jam_inputs_smartstrip_4AT_group,
+	&maschine_jam_inputs_smartstrip_4AS_group,
+	&maschine_jam_inputs_smartstrip_4BT_group,
+	&maschine_jam_inputs_smartstrip_4BS_group,
+	&maschine_jam_inputs_smartstrip_5AT_group,
+	&maschine_jam_inputs_smartstrip_5AS_group,
+	&maschine_jam_inputs_smartstrip_5BT_group,
+	&maschine_jam_inputs_smartstrip_5BS_group,
+	&maschine_jam_inputs_smartstrip_6AT_group,
+	&maschine_jam_inputs_smartstrip_6AS_group,
+	&maschine_jam_inputs_smartstrip_6BT_group,
+	&maschine_jam_inputs_smartstrip_6BS_group,
+	&maschine_jam_inputs_smartstrip_7AT_group,
+	&maschine_jam_inputs_smartstrip_7AS_group,
+	&maschine_jam_inputs_smartstrip_7BT_group,
+	&maschine_jam_inputs_smartstrip_7BS_group,
+	&maschine_jam_inputs_smartstrip_8AT_group,
+	&maschine_jam_inputs_smartstrip_8AS_group,
+	&maschine_jam_inputs_smartstrip_8BT_group,
+	&maschine_jam_inputs_smartstrip_8BS_group,
 	NULL
 };
 

@@ -179,23 +179,23 @@ midi_map_io(){
 			midi_map_io encoder 1 control_change 86
 		)
 		(cd smartstrips
-			midi_map_io 1A 0 control_change 8
-			midi_map_io 2A 0 control_change 9
-			midi_map_io 3A 0 control_change 10
-			midi_map_io 4A 0 control_change 11
-			midi_map_io 5A 0 control_change 12
-			midi_map_io 6A 0 control_change 13
-			midi_map_io 7A 0 control_change 14
-			midi_map_io 8A 0 control_change 15
+			midi_map_io 1AS 0 control_change 8
+			midi_map_io 2AS 0 control_change 9
+			midi_map_io 3AS 0 control_change 10
+			midi_map_io 4AS 0 control_change 11
+			midi_map_io 5AS 0 control_change 12
+			midi_map_io 6AS 0 control_change 13
+			midi_map_io 7AS 0 control_change 14
+			midi_map_io 8AS 0 control_change 15
 			
-			midi_map_io 1B 0 control_change 16
-			midi_map_io 2B 0 control_change 17
-			midi_map_io 3B 0 control_change 18
-			midi_map_io 4B 0 control_change 19
-			midi_map_io 5B 0 control_change 20
-			midi_map_io 6B 0 control_change 21
-			midi_map_io 7B 0 control_change 22
-			midi_map_io 8B 0 control_change 23
+			midi_map_io 1BS 0 control_change 16
+			midi_map_io 2BS 0 control_change 17
+			midi_map_io 3BS 0 control_change 18
+			midi_map_io 4BS 0 control_change 19
+			midi_map_io 5BS 0 control_change 20
+			midi_map_io 6BS 0 control_change 21
+			midi_map_io 7BS 0 control_change 22
+			midi_map_io 8BS 0 control_change 23
 		)
 	)
 )
