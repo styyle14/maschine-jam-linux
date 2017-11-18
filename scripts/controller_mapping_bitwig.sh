@@ -145,38 +145,38 @@ midi_map_io(){
 			midi_map_io matrix_8x7 0 note 84
 			midi_map_io matrix_8x8 0 note 85
 
-			midi_map_io mst 1 control_change 60
-			midi_map_io grp 1 control_change 61
-			midi_map_io in_1 1 control_change 62
-			midi_map_io cue 1 control_change 63
-			midi_map_io encoder_push 1 control_change 87
-			midi_map_io encoder_touch 1 control_change 88
-			midi_map_io browse 1 control_change 44
+			midi_map_io mst 0 control_change 60
+			midi_map_io grp 0 control_change 61
+			midi_map_io in_1 0 control_change 62
+			midi_map_io cue 0 control_change 63
+			midi_map_io encoder_push 0 control_change 87
+			midi_map_io encoder_touch 0 control_change 88
+			midi_map_io browse 0 control_change 44
 			
-			midi_map_io macro 1 control_change 90
-			midi_map_io level 1 control_change 91
-			midi_map_io aux 1 control_change 92
-			midi_map_io control 1 control_change 97
-			midi_map_io auto 1 control_change 98
+			midi_map_io macro 0 control_change 90
+			midi_map_io level 0 control_change 91
+			midi_map_io aux 0 control_change 92
+			midi_map_io control 0 control_change 97
+			midi_map_io auto 0 control_change 98
 			
-			midi_map_io perform 1 control_change 45
-			midi_map_io notes 1 control_change 46
-			midi_map_io lock 1 control_change 47
-			midi_map_io tune 1 control_change 48
-			midi_map_io swing 1 control_change 49
-			midi_map_io select 1 control_change 80
+			midi_map_io perform 0 control_change 45
+			midi_map_io notes 0 control_change 46
+			midi_map_io lock 0 control_change 47
+			midi_map_io tune 0 control_change 48
+			midi_map_io swing 0 control_change 49
+			midi_map_io select 0 control_change 80
 			
-			midi_map_io play 1 control_change 108
-			midi_map_io rec 1 control_change 109
-			midi_map_io page_left 1 control_change 107
-			midi_map_io page_right 1 control_change 104
-			midi_map_io tempo 1 control_change 110
-			midi_map_io grid 1 control_change 113
-			midi_map_io solo 1 control_change 111
-			midi_map_io mute 1 control_change 112
+			midi_map_io play 0 control_change 108
+			midi_map_io rec 0 control_change 109
+			midi_map_io page_left 0 control_change 107
+			midi_map_io page_right 0 control_change 104
+			midi_map_io tempo 0 control_change 110
+			midi_map_io grid 0 control_change 113
+			midi_map_io solo 0 control_change 111
+			midi_map_io mute 0 control_change 112
 		)
 		(cd knobs
-			midi_map_io encoder 1 control_change 86
+			midi_map_io encoder 0 control_change 86
 		)
 		(cd smartstrips
 			midi_map_io 1AS 0 control_change 8

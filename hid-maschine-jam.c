@@ -178,21 +178,32 @@ static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data 
 }
 
 static void maschine_jam_hid_write_report(struct work_struct *work){
-	int i;
-	unsigned char buffer[54];
+	static int i;
+	int ret = 0;
 	struct maschine_jam_driver_data *mj_driver_data = container_of(work, struct maschine_jam_driver_data, hid_report_write_report_work);
-	printk(KERN_ALERT "maschine_jam_hid_write_report() - 1");
+	unsigned char *buffer = kzalloc(88, GFP_KERNEL);
+	printk(KERN_NOTICE "maschine_jam_hid_write_report() - 1");
 	buffer[0] = 0x80;
-	spin_lock(&mj_driver_data->hid_report_led_buttons_lock);
-	for(i=0;i<sizeof(mj_driver_data->hid_report_led_buttons_1)/sizeof(mj_driver_data->hid_report_led_buttons_1[0]); i++){
-		buffer[i+1] = mj_driver_data->hid_report_led_buttons_1[i];
-	}
-	for(i=0;i<sizeof(mj_driver_data->hid_report_led_buttons_2)/sizeof(mj_driver_data->hid_report_led_buttons_2[0]); i++){
-		buffer[i+sizeof(mj_driver_data->hid_report_led_buttons_1)/sizeof(mj_driver_data->hid_report_led_buttons_1[0])] = mj_driver_data->hid_report_led_buttons_2[i];
-	}
-	spin_unlock(&mj_driver_data->hid_report_led_buttons_lock);
-	hid_hw_output_report(mj_driver_data->mj_hid_device, (unsigned char*)&buffer, sizeof(buffer));
-	printk(KERN_ALERT "maschine_jam_hid_write_report() - 2");
+	memset(&buffer[1], 0xFF, 53);
+	//spin_lock(&mj_driver_data->hid_report_led_buttons_lock);
+	//for(i=0;i<sizeof(mj_driver_data->hid_report_led_buttons_1)/sizeof(mj_driver_data->hid_report_led_buttons_1[0]); i++){
+		//buffer[i+1] = mj_driver_data->hid_report_led_buttons_1[i];
+	//}
+	//for(i=0;i<sizeof(mj_driver_data->hid_report_led_buttons_2)/sizeof(mj_driver_data->hid_report_led_buttons_2[0]); i++){
+		//buffer[i+sizeof(mj_driver_data->hid_report_led_buttons_1)/sizeof(mj_driver_data->hid_report_led_buttons_1[0])] = mj_driver_data->hid_report_led_buttons_2[i];
+	//}
+	//spin_unlock(&mj_driver_data->hid_report_led_buttons_lock);
+	ret = hid_hw_output_report(mj_driver_data->mj_hid_device, buffer, 54);
+	printk(KERN_NOTICE "maschine_jam_hid_write_report() - 0x80, %d, %d", buffer[1], ret);
+	buffer[0] = 0x81;
+	memset(&buffer[1], i++, 80);
+	ret = hid_hw_output_report(mj_driver_data->mj_hid_device, buffer, 81);
+	printk(KERN_NOTICE "maschine_jam_hid_write_report() - 0x81, %d, %d", buffer[1], ret);
+	buffer[0] = 0x82;
+	memset(&buffer[1], i, 88);
+	ret = hid_hw_output_report(mj_driver_data->mj_hid_device, buffer, 89);
+	printk(KERN_NOTICE "maschine_jam_hid_write_report() - 0x82, %d, %d", buffer[1], ret);
+	kfree(buffer);
 }
 
 static int maschine_jam_write_midi_note(struct maschine_jam_driver_data *mj_driver_data,
@@ -325,7 +336,6 @@ static int maschine_jam_process_report02_smartstrips_data(struct maschine_jam_dr
 	//data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23], data[24], data[25], data[26], data[27], data[28], data[29], data[30], data[31],
 	//data[32], data[33], data[34], data[35], data[36], data[37], data[38], data[39], data[40], data[41], data[42], data[43], data[44], data[45], data[46], data[47]);
 	
-	// !!! Add support for touch on/off midi options
 	for (smartstrip_index = 0; smartstrip_index < MASCHINE_JAM_NUMBER_SMARTSTRIPS; smartstrip_index++){
 		old_smartstrip = maschine_jam_get_smartstrip(mj_driver_data->hid_report02_data_smartstrips, smartstrip_index);
 		new_smartstrip = maschine_jam_get_smartstrip(data, smartstrip_index);
@@ -374,6 +384,7 @@ static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_r
 			// smartstrip_index < smartstrips_hid_field->report_count == MASCHINE_JAM_NUMBER_SMARTSTRIPS * MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGERS
 			maschine_jam_process_report01_knobs_data(mj_driver_data, &data[MASCHINE_JAM_HID_REPORT_ID_BYTES]);
 			maschine_jam_process_report01_buttons_data(mj_driver_data, &data[MASCHINE_JAM_HID_REPORT_ID_BYTES + MASCHINE_JAM_HID_REPORT_01_KNOBS_BYTES]);
+			schedule_work(&mj_driver_data->hid_report_write_report_work);
 		} else if (report->id == 0x02 && size == MASCHINE_JAM_HID_REPORT_02_BYTES){
 			// !!! Validate report
 			// smartstrip_index < smartstrips_hid_field->report_count == MASCHINE_JAM_NUMBER_SMARTSTRIPS * MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGERS
@@ -1091,24 +1102,25 @@ static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream){
 
 // get virtual midi data and transmit to physical maschine jam, cannot block
 static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substream, int up){
-	unsigned long flags;
-	unsigned char data;
+	//static int num;
+	//unsigned long flags;
+	//unsigned char data;
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	if (up != 0) {
-		while (snd_rawmidi_transmit(substream, &data, 1) == 1) {
-			//printk(KERN_ALERT "out_trigger data - %d", data);
-			spin_lock_irqsave(&mj_driver_data->hid_report_led_buttons_lock, flags);
-			mj_driver_data->hid_report_led_buttons_1[0] = data;
-			spin_unlock_irqrestore(&mj_driver_data->hid_report_led_buttons_lock, flags);
+	//if (up != 0) {
+		//while (snd_rawmidi_transmit(substream, &data, 1) == 1) {
+			//printk(KERN_NOTICE "%d - out_trigger data - %d", num++, data);
+			//spin_lock_irqsave(&mj_driver_data->hid_report_led_buttons_lock, flags);
+			//mj_driver_data->hid_report_led_buttons_1[0] = 67;
+			//spin_unlock_irqrestore(&mj_driver_data->hid_report_led_buttons_lock, flags);
 			schedule_work(&mj_driver_data->hid_report_write_report_work);
-		}
-	}else{
-		//printk(KERN_ALERT "out_trigger: up = 0");
-	}
-	spin_lock_irqsave(&mj_driver_data->midi_out_lock, flags);
-	mj_driver_data->midi_out_up = up;
-	spin_unlock_irqrestore(&mj_driver_data->midi_out_lock, flags);
+		//}
+	//}else{
+		////printk(KERN_ALERT "out_trigger: up = 0");
+	//}
+	//spin_lock_irqsave(&mj_driver_data->midi_out_lock, flags);
+	//mj_driver_data->midi_out_up = up;
+	//spin_unlock_irqrestore(&mj_driver_data->midi_out_lock, flags);
 }
 
 // MIDI_OUT operations
