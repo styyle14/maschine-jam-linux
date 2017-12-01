@@ -6,6 +6,7 @@
 #include <sound/core.h>
 #include <sound/initval.h>
 #include <sound/rawmidi.h>
+#include <sound/seq_midi_event.h>
 
 #include "hid-ids.h"
 
@@ -1102,25 +1103,68 @@ static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream){
 
 // get virtual midi data and transmit to physical maschine jam, cannot block
 static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substream, int up){
+	static struct snd_midi_event *midi_encoder = NULL;
+	static struct snd_seq_event midi_event;
 	//static int num;
-	//unsigned long flags;
-	//unsigned char data;
+	int sequencer_status;
+	unsigned long flags;
+	uint8_t data;
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
-
-	//if (up != 0) {
-		//while (snd_rawmidi_transmit(substream, &data, 1) == 1) {
+	if (midi_encoder == NULL) {
+		if (snd_midi_event_new(128, &midi_encoder) == 0) {
+			snd_midi_event_reset_encode(midi_encoder);
+		} else {
+			printk(KERN_ALERT "Failed to create new midi encoder!");
+			return;
+		}
+	}
+	if (up != 0) {
+		while (snd_rawmidi_transmit(substream, &data, 1) == 1) {
 			//printk(KERN_NOTICE "%d - out_trigger data - %d", num++, data);
-			//spin_lock_irqsave(&mj_driver_data->hid_report_led_buttons_lock, flags);
-			//mj_driver_data->hid_report_led_buttons_1[0] = 67;
-			//spin_unlock_irqrestore(&mj_driver_data->hid_report_led_buttons_lock, flags);
-			schedule_work(&mj_driver_data->hid_report_write_report_work);
-		//}
-	//}else{
-		////printk(KERN_ALERT "out_trigger: up = 0");
-	//}
-	//spin_lock_irqsave(&mj_driver_data->midi_out_lock, flags);
-	//mj_driver_data->midi_out_up = up;
-	//spin_unlock_irqrestore(&mj_driver_data->midi_out_lock, flags);
+			sequencer_status = snd_midi_event_encode_byte(midi_encoder, data, &midi_event);
+			//printk(KERN_NOTICE "snd_midi_event_encode: sequencer status: %d", sequencer_status);
+			if (sequencer_status == 0) {
+				continue;
+			} else if (sequencer_status == 1) {
+				if (snd_seq_ev_is_note_type(&midi_event)){
+					printk(KERN_NOTICE "snd_midi_event_encode: note_event: channel:%d, note:%d, velocity:%d", \
+						midi_event.data.note.channel,
+						midi_event.data.note.note,
+						midi_event.data.note.velocity
+					);
+				} else if (snd_seq_ev_is_control_type(&midi_event)){
+					printk(KERN_NOTICE "snd_midi_event_encode: control_event: channel:%d, param:%d, value:%d", \
+						midi_event.data.control.channel,
+						midi_event.data.control.param,
+						midi_event.data.control.value
+					);
+				} else if (snd_seq_ev_is_message_type(&midi_event)){
+					printk(KERN_NOTICE "snd_midi_event_encode: message event_type");
+				} else if (snd_seq_ev_is_user_type(&midi_event)){
+					printk(KERN_NOTICE "snd_midi_event_encode: user event_type");
+				} else if (snd_seq_ev_is_fixed_type(&midi_event)){
+					printk(KERN_NOTICE "snd_midi_event_encode: fixed event_type");
+				} else if (snd_seq_ev_is_variable_type(&midi_event)){
+					printk(KERN_NOTICE "snd_midi_event_encode: variable event_type");
+				} else {
+					printk(KERN_ALERT "snd_midi_event_encode: unnknwon event_type:%d", \
+						midi_event.type
+					);
+				}
+				//spin_lock_irqsave(&mj_driver_data->hid_report_led_buttons_lock, flags);
+				//mj_driver_data->hid_report_led_buttons_1[0] = 67;
+				//spin_unlock_irqrestore(&mj_driver_data->hid_report_led_buttons_lock, flags);
+				//schedule_work(&mj_driver_data->hid_report_write_report_work);
+			} else if (sequencer_status < 0){
+				printk(KERN_ALERT "ERROR: snd_midi_event_encode: sequencer status: %d", sequencer_status);
+			}
+		}
+	}else{
+		printk(KERN_ALERT "ERROR: midi_out_trigger: up = 0");
+	}
+	spin_lock_irqsave(&mj_driver_data->midi_out_lock, flags);
+	mj_driver_data->midi_out_up = up;
+	spin_unlock_irqrestore(&mj_driver_data->midi_out_lock, flags);
 }
 
 // MIDI_OUT operations
