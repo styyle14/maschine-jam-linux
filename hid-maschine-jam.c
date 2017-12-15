@@ -107,14 +107,14 @@ struct maschine_jam_driver_data {
 	spinlock_t				midi_out_mapping_lock;
 	uint8_t					hid_report_led_buttons[MASCHINE_JAM_NUMBER_BUTTON_LEDS];
 	spinlock_t				hid_report_led_buttons_lock;
-	struct work_struct		hid_report_led_buttons_work;  
+	struct work_struct		hid_report_led_buttons_work;
 	uint8_t					hid_report_led_pads[MASCHINE_JAM_NUMBER_PAD_LEDS];
 	spinlock_t				hid_report_led_pads_lock;
 	struct work_struct		hid_report_led_pads_work;
 	uint8_t					hid_report_led_strips[88];
 	spinlock_t				hid_report_led_smartstrips_lock;
 	struct work_struct		hid_report_led_smartstrips_work;
-	
+
 	// Sysfs Interface
 	struct kobject *directory_inputs;
 	struct kobject *directory_inputs_knobs;
@@ -142,10 +142,10 @@ static void maschine_jam_hid_write_led_smartstrips_report(struct work_struct *);
 static int8_t maschine_jam_output_mapping_add(struct maschine_jam_output_node*, struct maschine_jam_output_node*);
 static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data *mj_driver_data, struct hid_device *mj_hid_device){
 	unsigned int i, j, k, temp_key;
-	
+
 	// HID Device
 	mj_driver_data->mj_hid_device = mj_hid_device;
-	
+
 	// Inputs
 	temp_key = 0;
 	for(i = 0; i < MASCHINE_JAM_NUMBER_KNOBS; i++){
@@ -180,7 +180,7 @@ static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data 
 		}
 	}
 	memset(mj_driver_data->hid_report02_data_smartstrips, 0, sizeof(mj_driver_data->hid_report02_data_smartstrips));
-	
+
 	// Outputs
 	for(i=0;i<MASCHINE_JAM_MIDI_CHANNELS_MAX;i++){
 		for(j=0;j<MASCHINE_JAM_MIDI_NOTES_MAX;j++){
@@ -225,7 +225,7 @@ static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data 
 	memset(mj_driver_data->hid_report_led_strips, 0, sizeof(mj_driver_data->hid_report_led_strips));
 	spin_lock_init(&mj_driver_data->hid_report_led_smartstrips_lock);
 	INIT_WORK(&mj_driver_data->hid_report_led_smartstrips_work, maschine_jam_hid_write_led_smartstrips_report);
-	
+
 	// Sysfs Interface
 	mj_driver_data->directory_inputs = NULL;
 	mj_driver_data->directory_inputs_knobs = NULL;
@@ -234,7 +234,7 @@ static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data 
 	mj_driver_data->directory_outputs = NULL;
 	mj_driver_data->directory_outputs_buttons = NULL;
 	mj_driver_data->directory_outputs_smartstrips = NULL;
-	
+
 	// Sound/Midi Interface
 	mj_driver_data->sound_card = NULL;
 	mj_driver_data->rawmidi_interface = NULL;
@@ -248,9 +248,9 @@ static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data 
 
 static int8_t maschine_jam_output_mapping_add(struct maschine_jam_output_node* mapping_sentinal, struct maschine_jam_output_node* output_node){
 	struct maschine_jam_output_node* current_node;
-	
+
 	if (output_node->previous != NULL || output_node->next != NULL){
-		printk(KERN_ALERT "output_node must be removed before it can be added.");
+		printk(KERN_ALERT "output_node must be removed before it can be added.\n");
 		return -1;
 	}
 	if (mapping_sentinal->node_list_head == NULL){
@@ -282,7 +282,7 @@ static void maschine_jam_output_mapping_remove(struct maschine_jam_output_node* 
 }
 static inline struct maschine_jam_output_node* maschine_jam_output_mapping_get_sentinal(struct maschine_jam_output_node* output_node){
 	struct maschine_jam_output_node* current_node;
-	
+
 	if (output_node->previous == NULL){
 		return NULL;
 	}else{
@@ -304,9 +304,10 @@ static inline struct maschine_jam_output_node* maschine_jam_output_mapping_get_s
 }
 static int8_t maschine_jam_output_mapping_get_midi_info(struct maschine_jam_output_node* output_node, struct snd_seq_event* return_midi_event){
 	struct maschine_jam_output_node* sentinal_node;
-	
+
 	sentinal_node = maschine_jam_output_mapping_get_sentinal(output_node);
 	if(sentinal_node == NULL){
+		printk(KERN_ALERT  "maschine_jam_output_mapping_get_midi_info: sentinal node not found\n");
 		return -1;
 	}else{
 		if(sentinal_node->type == MJ_OUTPUT_NOTE_MAPPING_SENTINAL){
@@ -320,19 +321,58 @@ static int8_t maschine_jam_output_mapping_get_midi_info(struct maschine_jam_outp
 			return_midi_event->data.control.param = sentinal_node->param;
 			return 0;
 		}else{
+			printk(KERN_ALERT  "maschine_jam_output_mapping_get_midi_info: invalid sentinal_node->type\n");
 			return -2;
 		}
 	}
 }
 static int8_t maschine_jam_output_mapping_set_midi_info(struct maschine_jam_driver_data* mj_driver_data, struct maschine_jam_output_node* output_node, struct snd_seq_event* midi_event){
-	maschine_jam_output_mapping_remove(output_node);			
+	maschine_jam_output_mapping_remove(output_node);
 	if(midi_event->type == SNDRV_SEQ_EVENT_NOTE){
 		return 	maschine_jam_output_mapping_add(&mj_driver_data->midi_out_note_mapping[midi_event->data.note.channel][midi_event->data.note.note], output_node);
 	}else if(midi_event->type == SNDRV_SEQ_EVENT_CONTROLLER){
 		return 	maschine_jam_output_mapping_add(&mj_driver_data->midi_out_control_change_mapping[midi_event->data.control.channel][midi_event->data.control.param], output_node);
 	}else{
-		printk(KERN_ALERT "maschine_jam_output_mapping_set_midi_info - invalid midi_event->type");
+		printk(KERN_ALERT "maschine_jam_output_mapping_set_midi_info - invalid midi_event->type\n");
 		return -1;
+	}
+}
+inline static int8_t maschine_jam_snd_seq_event_get_channel(struct snd_seq_event* midi_event){
+	if(midi_event->type == SNDRV_SEQ_EVENT_NOTE){
+		return 	midi_event->data.note.channel;
+	}else if(midi_event->type == SNDRV_SEQ_EVENT_CONTROLLER){
+		return 	midi_event->data.control.channel;
+	}else{
+		printk(KERN_ALERT "maschine_jam_snd_seq_event_get_channel: invalid midi_event->type\n");
+		return -1;
+	}
+}
+inline static void maschine_jam_snd_seq_event_set_channel(struct snd_seq_event* midi_event, uint8_t channel){
+	if(midi_event->type == SNDRV_SEQ_EVENT_NOTE){
+		midi_event->data.note.channel = channel;
+	}else if(midi_event->type == SNDRV_SEQ_EVENT_CONTROLLER){
+		midi_event->data.control.channel = channel;
+	}else{
+		printk(KERN_ALERT "maschine_jam_snd_seq_event_set_channel: invalid midi_event->type\n");
+	}
+}
+inline static int8_t maschine_jam_snd_seq_event_get_key(struct snd_seq_event* midi_event){
+	if(midi_event->type == SNDRV_SEQ_EVENT_NOTE){
+		return 	midi_event->data.note.note;
+	}else if(midi_event->type == SNDRV_SEQ_EVENT_CONTROLLER){
+		return 	midi_event->data.control.param;
+	}else{
+		printk(KERN_ALERT "maschine_jam_snd_seq_event_get_key: invalid midi_event->type\n");
+		return -1;
+	}
+}
+inline static void maschine_jam_snd_seq_event_set_key(struct snd_seq_event* midi_event, uint8_t key){
+	if(midi_event->type == SNDRV_SEQ_EVENT_NOTE){
+		midi_event->data.note.note = key;
+	}else if(midi_event->type == SNDRV_SEQ_EVENT_CONTROLLER){
+		midi_event->data.control.param = key;
+	}else{
+		printk(KERN_ALERT "maschine_jam_snd_seq_event_set_key: invalid midi_event->type\n");
 	}
 }
 
@@ -340,7 +380,7 @@ static void maschine_jam_hid_write_led_buttons_report(struct work_struct *work){
 	int ret = 0;
 	struct maschine_jam_driver_data *mj_driver_data = container_of(work, struct maschine_jam_driver_data, hid_report_led_buttons_work);
 	unsigned char *buffer;
-	
+
 	buffer = kzalloc(MASCHINE_JAM_HID_REPORT_ID_BYTES + MASCHINE_JAM_NUMBER_BUTTON_LEDS, GFP_KERNEL);
 	buffer[0] = 0x80;
 	spin_lock(&mj_driver_data->hid_report_led_buttons_lock);
@@ -354,7 +394,7 @@ static void maschine_jam_hid_write_led_pads_report(struct work_struct *work){
 	int ret = 0;
 	struct maschine_jam_driver_data *mj_driver_data = container_of(work, struct maschine_jam_driver_data, hid_report_led_pads_work);
 	unsigned char *buffer;
-	
+
 	buffer = kzalloc(MASCHINE_JAM_HID_REPORT_ID_BYTES + MASCHINE_JAM_NUMBER_PAD_LEDS, GFP_KERNEL);
 	buffer[0] = 0x81;
 	spin_lock(&mj_driver_data->hid_report_led_pads_lock);
@@ -491,12 +531,12 @@ static int maschine_jam_process_report02_smartstrips_data(struct maschine_jam_dr
 	unsigned int smartstrip_index, touch_index, smartstrip_data_is_dirty;
 	struct maschine_jam_smartstrip old_smartstrip, new_smartstrip;
 	struct maschine_jam_midi_config *smartstrip_config;
-	
+
 	//printk(KERN_ALERT "report - %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",
 	//data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15],
 	//data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23], data[24], data[25], data[26], data[27], data[28], data[29], data[30], data[31],
 	//data[32], data[33], data[34], data[35], data[36], data[37], data[38], data[39], data[40], data[41], data[42], data[43], data[44], data[45], data[46], data[47]);
-	
+
 	for (smartstrip_index = 0; smartstrip_index < MASCHINE_JAM_NUMBER_SMARTSTRIPS; smartstrip_index++){
 		old_smartstrip = maschine_jam_get_smartstrip(mj_driver_data->hid_report02_data_smartstrips, smartstrip_index);
 		new_smartstrip = maschine_jam_get_smartstrip(data, smartstrip_index);
@@ -550,10 +590,10 @@ static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_r
 			// smartstrip_index < smartstrips_hid_field->report_count == MASCHINE_JAM_NUMBER_SMARTSTRIPS * MASCHINE_JAM_NUMBER_SMARTSTRIP_FINGERS
 			maschine_jam_process_report02_smartstrips_data(mj_driver_data, &data[MASCHINE_JAM_HID_REPORT_ID_BYTES]);
 		} else {
-			printk(KERN_ALERT "maschine_jam_raw_event() - error - report id is unknown or bad data size");
+			printk(KERN_ALERT "maschine_jam_raw_event() - error - report id is unknown or bad data size\n");
 		}
 	} else {
-		printk(KERN_ALERT "maschine_jam_raw_event() - error - bad parameters");
+		printk(KERN_ALERT "maschine_jam_raw_event() - error - bad parameters\n");
 	}
 	return return_value;
 }
@@ -623,7 +663,7 @@ static ssize_t maschine_jam_inputs_type_store(struct kobject *kobj, struct kobj_
 	} else if (strncmp(buf, MJ_MIDI_TYPE_CONTROL_CHANGE_STRING, sizeof(MJ_MIDI_TYPE_CONTROL_CHANGE_STRING)) == 0){
 		midi_type = MJ_MIDI_TYPE_CONTROL_CHANGE;
 	} else {
-		printk(KERN_ALERT "maschine_jam_inputs_type_store - invalid type");
+		printk(KERN_ALERT "maschine_jam_inputs_type_store - invalid type\n");
 		return count;
 	}
 	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
@@ -1197,14 +1237,18 @@ static ssize_t maschine_jam_outputs_type_show(struct kobject *kobj, struct kobj_
 	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
 	struct maschine_jam_driver_data *mj_driver_data = hid_get_drvdata(hdev);
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, type_attribute);
+	struct maschine_jam_output_node* output_node;
 	struct snd_seq_event midi_event;
 
 	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
-		if (maschine_jam_output_mapping_get_midi_info(&mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event) < 0){
-			return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_type_show: maschine_jam_output_mapping_get_midi_info: ERROR\n");
-		}
+		output_node = &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index];
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+		output_node = &mj_driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
 	} else {
-		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_type_show: unknown attribute type\n");
+		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_type_show: invalid io_attribute_type\n");
+	}
+	if (maschine_jam_output_mapping_get_midi_info(output_node, &midi_event) < 0){
+		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_type_show: unable to get midi info\n");
 	}
 	switch (midi_event.type){
 		case SNDRV_SEQ_EVENT_NOTE:
@@ -1224,39 +1268,40 @@ static ssize_t maschine_jam_outputs_type_store(struct kobject *kobj, struct kobj
 	struct maschine_jam_driver_data *mj_driver_data = hid_get_drvdata(hdev);
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, type_attribute);
 	snd_seq_event_type_t input_type;
+	struct maschine_jam_output_node* output_node;
 	struct snd_seq_event midi_event;
+	uint8_t channel, key;
 
 	if (strncmp(buf, MJ_MIDI_TYPE_NOTE_STRING, sizeof(MJ_MIDI_TYPE_NOTE_STRING)) == 0){
 		input_type = SNDRV_SEQ_EVENT_NOTE;
 	} else if (strncmp(buf, MJ_MIDI_TYPE_CONTROL_CHANGE_STRING, sizeof(MJ_MIDI_TYPE_CONTROL_CHANGE_STRING)) == 0){
 		input_type = SNDRV_SEQ_EVENT_CONTROLLER;
 	} else {
-		printk(KERN_ALERT "maschine_jam_outputs_type_store - invalid input_type");
+		printk(KERN_ALERT "maschine_jam_outputs_type_store - invalid input_type\n");
 		return count;
 	}
 	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
-		if (maschine_jam_output_mapping_get_midi_info(&mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event) < 0){
-			printk(KERN_ALERT  "maschine_jam_outputs_type_store: maschine_jam_output_mapping_get_midi_info: ERROR\n");
-			return count;
-		}
-		if (midi_event.type == SNDRV_SEQ_EVENT_NOTE && input_type == SNDRV_SEQ_EVENT_CONTROLLER){
-			midi_event.type = SNDRV_SEQ_EVENT_CONTROLLER;
-			midi_event.data.control.channel = midi_event.data.note.channel;
-			midi_event.data.control.param = midi_event.data.note.note;
-			maschine_jam_output_mapping_set_midi_info(mj_driver_data, &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event);
-		} else if (midi_event.type == SNDRV_SEQ_EVENT_CONTROLLER && input_type == SNDRV_SEQ_EVENT_NOTE){
-			midi_event.type = SNDRV_SEQ_EVENT_NOTE;
-			midi_event.data.note.channel = midi_event.data.control.channel;
-			midi_event.data.note.note = midi_event.data.control.param;
-			maschine_jam_output_mapping_set_midi_info(mj_driver_data, &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event);
-		} else {
-			printk(KERN_ALERT "maschine_jam_outputs_type_store - get.type == input_type");
-		}
-	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+		output_node = &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index];
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+		output_node = &mj_driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
 	} else {
-		printk(KERN_ALERT "maschine_jam_outputs_type_store - invalid io_attribute_type");
+		printk(KERN_ALERT "maschine_jam_outputs_channel_store: invalid io_attribute_type\n");
 		return count;
 	}
+	spin_lock(&mj_driver_data->midi_out_mapping_lock);
+	if (maschine_jam_output_mapping_get_midi_info(output_node, &midi_event) < 0){
+		printk(KERN_ALERT "maschine_jam_outputs_channel_store: unable to get midi info\n");
+	} else {
+		if (midi_event.type != input_type){
+			channel = maschine_jam_snd_seq_event_get_channel(&midi_event);
+			key = maschine_jam_snd_seq_event_get_key(&midi_event);
+			midi_event.type = input_type;
+			maschine_jam_snd_seq_event_set_channel(&midi_event, channel);
+			maschine_jam_snd_seq_event_set_key(&midi_event, key);
+			maschine_jam_output_mapping_set_midi_info(mj_driver_data, output_node, &midi_event);
+		}
+	}
+	spin_unlock(&mj_driver_data->midi_out_mapping_lock);
 	return count;
 }
 static ssize_t maschine_jam_outputs_channel_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
@@ -1267,23 +1312,20 @@ static ssize_t maschine_jam_outputs_channel_show(struct kobject *kobj, struct ko
 	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
 	struct maschine_jam_driver_data *mj_driver_data = hid_get_drvdata(hdev);
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, channel_attribute);
+	struct maschine_jam_output_node* output_node;
 	struct snd_seq_event midi_event;
 
 	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
-		if (maschine_jam_output_mapping_get_midi_info(&mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event) < 0){
-			return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_channel_show: maschine_jam_output_mapping_get_midi_info: ERROR\n");
-		}
+		output_node = &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index];
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+		output_node = &mj_driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
 	} else {
-		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_channel_show: unknown attribute type\n");
+		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_channel_show: invalid io_attribute_type\n");
 	}
-	switch (midi_event.type){
-		case SNDRV_SEQ_EVENT_NOTE:
-			return scnprintf(buf, PAGE_SIZE, "%d\n", midi_event.data.note.channel);
-		case SNDRV_SEQ_EVENT_CONTROLLER:
-			return scnprintf(buf, PAGE_SIZE, "%d\n", midi_event.data.control.channel);
-		default:
-			return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_channel_show: unknown midi type\n");
+	if (maschine_jam_output_mapping_get_midi_info(output_node, &midi_event) < 0){
+		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_channel_show: unable to get midi info\n");
 	}
+	return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_snd_seq_event_get_channel(&midi_event));
 }
 static ssize_t maschine_jam_outputs_channel_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count){
 	struct kobject *maschine_jam_outputs_type_dir = kobj;
@@ -1294,27 +1336,30 @@ static ssize_t maschine_jam_outputs_channel_store(struct kobject *kobj, struct k
 	struct maschine_jam_driver_data *mj_driver_data = hid_get_drvdata(hdev);
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, channel_attribute);
 	unsigned int store_value;
+	struct maschine_jam_output_node* output_node;
 	struct snd_seq_event midi_event;
+	uint8_t channel;
 
 	sscanf(buf, "%u", &store_value);
 	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
-		if (maschine_jam_output_mapping_get_midi_info(&mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event) < 0){
-			printk(KERN_ALERT  "maschine_jam_outputs_type_store: maschine_jam_output_mapping_get_midi_info: ERROR\n");
-			return count;
-		}
-		if (midi_event.type == SNDRV_SEQ_EVENT_NOTE && midi_event.data.note.channel != store_value){
-			midi_event.data.note.channel = store_value;
-			maschine_jam_output_mapping_set_midi_info(mj_driver_data, &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event);
-		} else if (midi_event.type == SNDRV_SEQ_EVENT_CONTROLLER && midi_event.data.control.channel != store_value){
-			midi_event.data.control.channel = store_value;
-			maschine_jam_output_mapping_set_midi_info(mj_driver_data, &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event);
-		} else {
-			printk(KERN_ALERT "maschine_jam_outputs_channel_store - get.channel == input_channel == %d", store_value);
-		}
-	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+		output_node = &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index];
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+		output_node = &mj_driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
 	} else {
-		printk(KERN_ALERT "maschine_jam_outputs_channel_store - invalid io_attribute_channel");
+		printk(KERN_ALERT "maschine_jam_outputs_channel_store: invalid io_attribute_type\n");
+		return count;
 	}
+	spin_lock(&mj_driver_data->midi_out_mapping_lock);
+	if (maschine_jam_output_mapping_get_midi_info(output_node, &midi_event) < 0){
+		printk(KERN_ALERT "maschine_jam_outputs_channel_store: unable to get midi info\n");
+	} else {
+		channel = maschine_jam_snd_seq_event_get_channel(&midi_event);
+		if (channel >= 0 && channel != store_value){
+			maschine_jam_snd_seq_event_set_channel(&midi_event, store_value);
+			maschine_jam_output_mapping_set_midi_info(mj_driver_data, output_node, &midi_event);
+		}
+	}
+	spin_unlock(&mj_driver_data->midi_out_mapping_lock);
 	return count;
 }
 static ssize_t maschine_jam_outputs_key_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
@@ -1325,23 +1370,20 @@ static ssize_t maschine_jam_outputs_key_show(struct kobject *kobj, struct kobj_a
 	struct hid_device *hdev = container_of(dev, struct hid_device, dev);
 	struct maschine_jam_driver_data *mj_driver_data = hid_get_drvdata(hdev);
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, key_attribute);
+	struct maschine_jam_output_node* output_node;
 	struct snd_seq_event midi_event;
 
 	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
-		if (maschine_jam_output_mapping_get_midi_info(&mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event) < 0){
-			return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_key_show: maschine_jam_output_mapping_get_midi_info: ERROR\n");
-		}
+		output_node = &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index];
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+		output_node = &mj_driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
 	} else {
-		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_key_show: unknown attribute type\n");
+		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_key_show: invalid io_attribute_type\n");
 	}
-	switch (midi_event.type){
-		case SNDRV_SEQ_EVENT_NOTE:
-			return scnprintf(buf, PAGE_SIZE, "%d\n", midi_event.data.note.note);
-		case SNDRV_SEQ_EVENT_CONTROLLER:
-			return scnprintf(buf, PAGE_SIZE, "%d\n", midi_event.data.control.param);
-		default:
-			return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_key_show: unknown midi type\n");
+	if (maschine_jam_output_mapping_get_midi_info(output_node, &midi_event) < 0){
+		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_key_show: unable to get midi info\n");
 	}
+	return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_snd_seq_event_get_key(&midi_event));
 }
 static ssize_t maschine_jam_outputs_key_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count){
 	struct kobject *maschine_jam_outputs_type_dir = kobj;
@@ -1352,27 +1394,30 @@ static ssize_t maschine_jam_outputs_key_store(struct kobject *kobj, struct kobj_
 	struct maschine_jam_driver_data *mj_driver_data = hid_get_drvdata(hdev);
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, key_attribute);
 	unsigned int store_value;
+	struct maschine_jam_output_node* output_node;
 	struct snd_seq_event midi_event;
+	uint8_t key;
 
 	sscanf(buf, "%u", &store_value);
 	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
-		if (maschine_jam_output_mapping_get_midi_info(&mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event) < 0){
-			printk(KERN_ALERT  "maschine_jam_outputs_key_store: maschine_jam_output_mapping_get_midi_info: ERROR\n");
-			return count;
-		}
-		if (midi_event.type == SNDRV_SEQ_EVENT_NOTE && midi_event.data.note.note != store_value){
-			midi_event.data.note.note = store_value;
-			maschine_jam_output_mapping_set_midi_info(mj_driver_data, &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event);
-		} else if (midi_event.type == SNDRV_SEQ_EVENT_CONTROLLER && midi_event.data.control.param != store_value){
-			midi_event.data.control.param = store_value;
-			maschine_jam_output_mapping_set_midi_info(mj_driver_data, &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index], &midi_event);
-		} else {
-			printk(KERN_ALERT "maschine_jam_outputs_key_store - get.key == input_key == %d", store_value);
-		}
-	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+		output_node = &mj_driver_data->midi_out_button_led_nodes[io_attribute->io_index];
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+		output_node = &mj_driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
 	} else {
-		printk(KERN_ALERT "maschine_jam_outputs_key_store - invalid io_attribute_key");
+		printk(KERN_ALERT "maschine_jam_outputs_key_store: invalid io_attribute_type\n");
+		return count;
 	}
+	spin_lock(&mj_driver_data->midi_out_mapping_lock);
+	if (maschine_jam_output_mapping_get_midi_info(output_node, &midi_event) < 0){
+		printk(KERN_ALERT "maschine_jam_outputs_key_store: unable to get midi info\n");
+	} else {
+		key = maschine_jam_snd_seq_event_get_key(&midi_event);
+		if (key >= 0 && key != store_value){
+			maschine_jam_snd_seq_event_set_key(&midi_event, store_value);
+			maschine_jam_output_mapping_set_midi_info(mj_driver_data, output_node, &midi_event);
+		}
+	}
+	spin_unlock(&mj_driver_data->midi_out_mapping_lock);
 	return count;
 }
 static ssize_t maschine_jam_outputs_status_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
@@ -1417,8 +1462,8 @@ static ssize_t maschine_jam_outputs_status_store(struct kobject *kobj, struct ko
 	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
 		//maschine_jam_set_smartstrip_touch_value(mj_driver_data->hid_report02_data_smartstrips, io_attribute->io_index/2, io_attribute->io_index%2, store_value & 0x03FF);
 	//}
-	//printk(KERN_ALERT "maschine_jam_outputs_status_store - invalid type");
-	printk(KERN_ALERT "maschine_jam_outputs_status_store - unimplemented");
+	//printk(KERN_ALERT "maschine_jam_outputs_status_store - invalid type\n");
+	printk(KERN_ALERT "maschine_jam_outputs_status_store - unimplemented\n");
 	return count;
 }
 #define MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(_name, _index) \
@@ -1474,22 +1519,22 @@ static struct snd_device_ops maschine_jam_snd_device_ops = {
 static int maschine_jam_midi_in_open(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "in_open() - 1");
+	printk(KERN_ALERT "in_open() - 1\n");
 	spin_lock_irq(&mj_driver_data->midi_in_lock);
 	mj_driver_data->midi_in_substream = substream;
 	spin_unlock_irq(&mj_driver_data->midi_in_lock);
-	printk(KERN_ALERT "in_open() - 2");
+	printk(KERN_ALERT "in_open() - 2\n");
 	return 0;
 }
 
 static int maschine_jam_midi_in_close(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "in_close() - 1");
+	printk(KERN_ALERT "in_close() - 1\n");
 	spin_lock_irq(&mj_driver_data->midi_in_lock);
 	mj_driver_data->midi_in_substream = NULL;
 	spin_unlock_irq(&mj_driver_data->midi_in_lock);
-	printk(KERN_ALERT "in_close() - 2");
+	printk(KERN_ALERT "in_close() - 2\n");
 	return 0;
 }
 
@@ -1497,11 +1542,11 @@ static void maschine_jam_midi_in_trigger(struct snd_rawmidi_substream *substream
 	unsigned long flags;
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "in_trigger() - 1");
+	printk(KERN_ALERT "in_trigger() - 1\n");
 	spin_lock_irqsave(&mj_driver_data->midi_in_lock, flags);
 	mj_driver_data->midi_in_up = up;
 	spin_unlock_irqrestore(&mj_driver_data->midi_in_lock, flags);
-	printk(KERN_ALERT "in_trigger() - 2");
+	printk(KERN_ALERT "in_trigger() - 2\n");
 }
 
 // MIDI_IN operations
@@ -1514,28 +1559,28 @@ static struct snd_rawmidi_ops maschine_jam_midi_in_ops = {
 static int maschine_jam_midi_out_open(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "out_open() - 1");
+	printk(KERN_ALERT "out_open() - 1\n");
 
 	spin_lock_irq(&mj_driver_data->midi_out_lock);
 	mj_driver_data->midi_out_substream = substream;
 	mj_driver_data->midi_out_up = 0;
 	spin_unlock_irq(&mj_driver_data->midi_out_lock);
 
-	printk(KERN_ALERT "out_open() - 2");
+	printk(KERN_ALERT "out_open() - 2\n");
 	return 0;
 }
 
 static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "out_close() - 1");
+	printk(KERN_ALERT "out_close() - 1\n");
 
 	spin_lock_irq(&mj_driver_data->midi_out_lock);
 	mj_driver_data->midi_out_substream = NULL;
 	mj_driver_data->midi_out_up = 0;
 	spin_unlock_irq(&mj_driver_data->midi_out_lock);
 
-	printk(KERN_ALERT "out_close() - 2");   
+	printk(KERN_ALERT "out_close() - 2\n");
 	return 0;
 }
 
@@ -1551,12 +1596,12 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 	struct maschine_jam_output_node* sentinal_node;
 	struct maschine_jam_output_node* output_node;
 	uint8_t write_value;
-	
+
 	if (midi_encoder == NULL) {
 		if (snd_midi_event_new(128, &midi_encoder) == 0) {
 			snd_midi_event_reset_encode(midi_encoder);
 		} else {
-			printk(KERN_ALERT "Failed to create new midi encoder!");
+			printk(KERN_ALERT "Failed to create new midi encoder!\n");
 			return;
 		}
 	}
@@ -1586,7 +1631,7 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 						sentinal_node = &mj_driver_data->midi_out_control_change_mapping[midi_event.data.control.channel][midi_event.data.control.param];
 						write_value = midi_event.data.control.value;
 					} else {
-						printk(KERN_ALERT "ERROR: sequencer event type is not note or control but still channel...");
+						printk(KERN_ALERT "ERROR: sequencer event type is not note or control but still channel...\n");
 						return;
 					}
 					spin_lock_irqsave(&mj_driver_data->midi_out_mapping_lock, flags);
@@ -1603,13 +1648,13 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 							spin_unlock(&mj_driver_data->hid_report_led_pads_lock);
 							schedule_work(&mj_driver_data->hid_report_led_pads_work);
 						}else if(output_node->type == MJ_OUTPUT_SMARTSTRIP_LED_NODE){
-							printk(KERN_NOTICE "snd_midi_event_encode: smartstrip node found");
+							printk(KERN_NOTICE "snd_midi_event_encode: smartstrip node found\n");
 						}
 						output_node = output_node->next;
 					}
 					spin_unlock_irqrestore(&mj_driver_data->midi_out_mapping_lock, flags);
 				} else if (snd_seq_ev_is_variable_type(&midi_event)){
-					printk(KERN_NOTICE "snd_midi_event_encode: variable event_type");
+					printk(KERN_NOTICE "snd_midi_event_encode: variable event_type\n");
 				} else {
 					printk(KERN_ALERT "snd_midi_event_encode: unknwon event_type:%d", \
 						midi_event.type
@@ -1620,7 +1665,7 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 			}
 		}
 	}else{
-		printk(KERN_ALERT "ERROR: midi_out_trigger: up = 0");
+		printk(KERN_ALERT "ERROR: midi_out_trigger: up = 0\n");
 	}
 	spin_lock_irqsave(&mj_driver_data->midi_out_lock, flags);
 	mj_driver_data->midi_out_up = up;
@@ -1641,28 +1686,28 @@ static int maschine_jam_create_sound_card(struct maschine_jam_driver_data *mj_dr
 	int error_code;
 	struct snd_card *sound_card;
 	struct snd_rawmidi *rawmidi_interface;
-	
+
 	/* Setup sound card */
 	error_code = snd_card_new(&mj_driver_data->mj_hid_device->dev, SNDRV_DEFAULT_IDX1, SNDRV_DEFAULT_STR1, THIS_MODULE, 0, &sound_card);
 	if (error_code != 0) {
-		printk(KERN_ALERT "Failed to create Maschine Jam sound card.");
+		printk(KERN_ALERT "Failed to create Maschine Jam sound card.\n");
 		goto return_error_code;
 	}
 	strncpy(sound_card->driver, shortname, sizeof(sound_card->driver));
 	strncpy(sound_card->shortname, shortname, sizeof(sound_card->shortname));
 	strncpy(sound_card->longname, longname, sizeof(sound_card->longname));
-	
+
 	/* Setup sound device */
 	error_code = snd_device_new(sound_card, SNDRV_DEV_LOWLEVEL, mj_driver_data->mj_hid_device, &maschine_jam_snd_device_ops);
 	if (error_code != 0) {
-		printk(KERN_ALERT "Failed to create Maschine Jam sound device.");
+		printk(KERN_ALERT "Failed to create Maschine Jam sound device.\n");
 		goto failure_snd_card_free;
 	}
 
 	/* Set up rawmidi */
 	error_code = snd_rawmidi_new(sound_card, sound_card->shortname, 0, 1, 1, &rawmidi_interface);
 	if (error_code != 0) {
-		printk(KERN_ALERT "Failed to create Maschine Jam rawmidi device.");
+		printk(KERN_ALERT "Failed to create Maschine Jam rawmidi device.\n");
 		goto failure_snd_device_free;
 	}
 	strncpy(rawmidi_interface->name, sound_card->longname, sizeof(rawmidi_interface->name));
@@ -1674,10 +1719,10 @@ static int maschine_jam_create_sound_card(struct maschine_jam_driver_data *mj_dr
 	/* Register sound card */
 	error_code = snd_card_register(sound_card);
 	if (error_code != 0) {
-		printk(KERN_ALERT "Failed to register Maschine Jam sound card.");
+		printk(KERN_ALERT "Failed to register Maschine Jam sound card.\n");
 		goto failure_snd_device_free;
 	}
-	
+
 	mj_driver_data->sound_card = sound_card;
 	mj_driver_data->rawmidi_interface = rawmidi_interface;
 	goto return_error_code;
@@ -1700,7 +1745,7 @@ static int maschine_jam_delete_sound_card(struct maschine_jam_driver_data *mj_dr
 		snd_device_free(sound_card, mj_driver_data->mj_hid_device);
 		snd_card_free_when_closed(sound_card);
 	}
-	
+
 	return error_code;
 }
 
@@ -1714,41 +1759,41 @@ static int maschine_jam_create_sysfs_inputs_interface(struct maschine_jam_driver
 
 	directory_inputs = kobject_create_and_add("inputs", device_kobject);
 	if (directory_inputs == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add inputs failed!");
+		printk(KERN_ALERT "kobject_create_and_add inputs failed!\n");
 		error_code = -1;
 		goto return_error_code;
 	}
 	directory_inputs_knobs = kobject_create_and_add("knobs", directory_inputs);
 	if (directory_inputs_knobs == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add knobs failed!");
+		printk(KERN_ALERT "kobject_create_and_add knobs failed!\n");
 		error_code = -1;
 		goto failure_delete_kobject_inputs;
 	}
 	error_code = sysfs_create_groups(directory_inputs_knobs, maschine_jam_inputs_knobs_groups);
 	if (error_code < 0) {
-		printk(KERN_ALERT "sysfs_create_groups knobs failed!");
+		printk(KERN_ALERT "sysfs_create_groups knobs failed!\n");
 		goto failure_delete_kobject_inputs_knobs;
 	}
 	directory_inputs_buttons = kobject_create_and_add("buttons", directory_inputs);
 	if (directory_inputs_buttons == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add buttons failed!");
+		printk(KERN_ALERT "kobject_create_and_add buttons failed!\n");
 		error_code = -1;
 		goto failure_remove_inputs_knobs_groups;
 	}
 	error_code = sysfs_create_groups(directory_inputs_buttons, maschine_jam_inputs_buttons_groups);
 	if (error_code < 0) {
-		printk(KERN_ALERT "sysfs_create_groups buttons failed!");
+		printk(KERN_ALERT "sysfs_create_groups buttons failed!\n");
 		goto failure_delete_kobject_inputs_buttons;
 	}
 	directory_inputs_smartstrips = kobject_create_and_add("smartstrips", directory_inputs);
 	if (directory_inputs_smartstrips == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add smartstrips failed!");
+		printk(KERN_ALERT "kobject_create_and_add smartstrips failed!\n");
 		error_code = -1;
 		goto failure_remove_inputs_buttons_groups;
 	}
 	error_code = sysfs_create_groups(directory_inputs_smartstrips, maschine_jam_inputs_smartstrips_groups);
 	if (error_code < 0) {
-		printk(KERN_ALERT "sysfs_create_groups failed!");
+		printk(KERN_ALERT "sysfs_create_groups failed!\n");
 		goto failure_delete_kobject_inputs_smartstrips;
 	}
 	mj_driver_data->directory_inputs = directory_inputs;
@@ -1798,24 +1843,24 @@ static int maschine_jam_create_sysfs_outputs_interface(struct maschine_jam_drive
 
 	directory_outputs = kobject_create_and_add("outputs", device_kobject);
 	if (directory_outputs == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add outputs failed!");
+		printk(KERN_ALERT "kobject_create_and_add outputs failed!\n");
 		error_code = -1;
 		goto return_error_code;
 	}
 	directory_outputs_buttons = kobject_create_and_add("buttons", directory_outputs);
 	if (directory_outputs_buttons == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add buttons failed!");
+		printk(KERN_ALERT "kobject_create_and_add buttons failed!\n");
 		error_code = -1;
 		goto failure_delete_kobject_outputs;
 	}
 	error_code = sysfs_create_groups(directory_outputs_buttons, maschine_jam_outputs_buttons_groups);
 	if (error_code < 0) {
-		printk(KERN_ALERT "sysfs_create_groups buttons failed!");
+		printk(KERN_ALERT "sysfs_create_groups buttons failed!\n");
 		goto failure_delete_kobject_outputs_buttons;
 	}
 	directory_outputs_smartstrips = kobject_create_and_add("smartstrips", directory_outputs);
 	if (directory_outputs_smartstrips == NULL) {
-		printk(KERN_ALERT "kobject_create_and_add smartstrips failed!");
+		printk(KERN_ALERT "kobject_create_and_add smartstrips failed!\n");
 		error_code = -1;
 		goto failure_remove_outputs_buttons_groups;
 	}
@@ -1823,7 +1868,7 @@ static int maschine_jam_create_sysfs_outputs_interface(struct maschine_jam_drive
 	mj_driver_data->directory_outputs_buttons = directory_outputs_buttons;
 	mj_driver_data->directory_outputs_smartstrips = directory_outputs_smartstrips;
 	goto return_error_code;
-	
+
 //failure_delete_kobject_outputs_smartstrips:
 	//kobject_del(directory_outputs_smartstrips);
 failure_remove_outputs_buttons_groups:
@@ -1854,7 +1899,7 @@ static int maschine_jam_probe(struct hid_device *mj_hid_device, const struct hid
 	//unsigned long dd = id->driver_data;
 	struct maschine_jam_driver_data *mj_driver_data = NULL;
 
-	printk(KERN_ALERT "Found Maschine JAM!");
+	printk(KERN_ALERT "Found Maschine JAM!\n");
 	if (interface_number != 0){
 		printk(KERN_ALERT "Unexpected interface number %d was found. Unit may be in update mode.", interface_number);
 		error_code = -EBADR; /* Interface 1 is the Device Firmware Upgrade Interface */
@@ -1863,43 +1908,43 @@ static int maschine_jam_probe(struct hid_device *mj_hid_device, const struct hid
 
 	mj_driver_data = kzalloc(sizeof(struct maschine_jam_driver_data), GFP_KERNEL);
 	if (mj_driver_data == NULL) {
-		printk(KERN_ALERT "kzalloc(sizeof(struct maschine_jam_driver_data), GFP_KERNEL); FAILED");
+		printk(KERN_ALERT "kzalloc(sizeof(struct maschine_jam_driver_data), GFP_KERNEL); FAILED\n");
 		error_code = -ENOMEM;
 		goto return_error_code;
 	}
 	maschine_jam_initialize_driver_data(mj_driver_data, mj_hid_device);
 	error_code = maschine_jam_create_sound_card(mj_driver_data);
 	if (error_code != 0){
-		printk(KERN_ALERT "Failed to create sound card.");
+		printk(KERN_ALERT "Failed to create sound card.\n");
 		goto failure_free_driver_data;
 	}
 	error_code = maschine_jam_create_sysfs_inputs_interface(mj_driver_data);
 	if (error_code != 0){
-		printk(KERN_ALERT "Failed to create sysfs inputs interface attributes.");
+		printk(KERN_ALERT "Failed to create sysfs inputs interface attributes.\n");
 		goto failure_delete_sound_card;
 	}
 	error_code = maschine_jam_create_sysfs_outputs_interface(mj_driver_data);
 	if (error_code != 0){
-		printk(KERN_ALERT "Failed to create sysfs outputs interface attributes.");
+		printk(KERN_ALERT "Failed to create sysfs outputs interface attributes.\n");
 		goto failure_delete_sysfs_inputs_interface;
 	}
-	
+
 	hid_set_drvdata(mj_hid_device, mj_driver_data);
 
 	// TODO validate hid fields from some report
 	error_code = hid_parse(mj_hid_device);
 	if (error_code != 0) {
-		printk(KERN_ALERT "hid parse failed");
+		printk(KERN_ALERT "hid parse failed\n");
 		goto failure_delete_sysfs_outputs_interface;
 	}
 	error_code = hid_hw_start(mj_hid_device, HID_CONNECT_DEFAULT);
 	if (error_code != 0) {
-		printk(KERN_ALERT "hw start failed");
+		printk(KERN_ALERT "hw start failed\n");
 		goto failure_delete_sysfs_outputs_interface;
 	}
 	error_code = hid_hw_open(mj_hid_device);
 	if (error_code != 0) {
-		printk(KERN_ALERT "hw open failed");
+		printk(KERN_ALERT "hw open failed\n");
 		goto failure_hid_hw_stop;
 	}
 
@@ -1933,7 +1978,7 @@ static void maschine_jam_remove(struct hid_device *mj_hid_device){
 		kfree(mj_driver_data);
 	}
 
-	printk(KERN_ALERT "Maschine JAM removed!");
+	printk(KERN_ALERT "Maschine JAM removed!\n");
 }
 
 static const struct hid_device_id maschine_jam_devices[] = {
