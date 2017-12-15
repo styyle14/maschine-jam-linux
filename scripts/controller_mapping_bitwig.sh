@@ -198,6 +198,11 @@ midi_map_io(){
 			midi_map_io 8BS 0 control_change 23
 		)
 	)
+	(cd outputs
+		(cd buttons
+			midi_map_io song 0 control_change 30
+		)
+	)
 )
 #note = 9
 #aftertouch = 10
