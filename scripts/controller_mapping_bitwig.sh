@@ -51,7 +51,7 @@ midi_map_io(){
 	NAME="$(basename ${IO_DIRECTORY})"
 	UP_ONE="$(dirname "$IO_DIRECTORY")"
 	UP_TWO="$(dirname "$UP_ONE")"
-	echo "$(basename ${UP_TWO}):$(basename ${UP_ONE}):${NAME}: channel=${IO_CHANNEL}, type=${IO_TYPE}, key=${IO_KEY}"
+	echo "$(basename ${UP_TWO})/$(basename ${UP_ONE})/${NAME}: channel=${IO_CHANNEL}, type=${IO_TYPE}, key=${IO_KEY}"
 	
 	return 0
 }

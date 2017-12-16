@@ -131,9 +131,13 @@ struct maschine_jam_driver_data {
 	struct snd_rawmidi_substream	*midi_in_substream;
 	unsigned long			midi_in_up;
 	spinlock_t				midi_in_lock;
+	struct snd_midi_event*	midi_in_encoder;
+	spinlock_t				midi_in_encoder_lock;
 	struct snd_rawmidi_substream	*midi_out_substream;
 	unsigned long			midi_out_up;
 	spinlock_t				midi_out_lock;
+	struct snd_midi_event*	midi_out_decoder;
+	spinlock_t				midi_out_decoder_lock;
 };
 
 static void maschine_jam_hid_write_led_buttons_report(struct work_struct *);
@@ -241,9 +245,11 @@ static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data 
 	mj_driver_data->midi_in_substream = NULL;
 	mj_driver_data->midi_in_up = 0;
 	spin_lock_init(&mj_driver_data->midi_in_lock);
+	spin_lock_init(&mj_driver_data->midi_in_encoder_lock);
 	mj_driver_data->midi_out_substream = NULL;
 	mj_driver_data->midi_out_up = 0;
 	spin_lock_init(&mj_driver_data->midi_out_lock);
+	spin_lock_init(&mj_driver_data->midi_out_decoder_lock);
 }
 
 static int8_t maschine_jam_output_mapping_add(struct maschine_jam_output_node* mapping_sentinal, struct maschine_jam_output_node* output_node){
@@ -387,7 +393,7 @@ static void maschine_jam_hid_write_led_buttons_report(struct work_struct *work){
 	memcpy(&buffer[MASCHINE_JAM_HID_REPORT_ID_BYTES], &mj_driver_data->hid_report_led_buttons, MASCHINE_JAM_NUMBER_BUTTON_LEDS);
 	spin_unlock(&mj_driver_data->hid_report_led_buttons_lock);
 	ret = hid_hw_output_report(mj_driver_data->mj_hid_device, buffer, MASCHINE_JAM_HID_REPORT_ID_BYTES + MASCHINE_JAM_NUMBER_BUTTON_LEDS);
-	printk(KERN_NOTICE "maschine_jam_hid_write_report() - 0x80, ret=%d", ret);
+	//printk(KERN_NOTICE "maschine_jam_hid_write_report() - 0x80, ret=%d", ret);
 	kfree(buffer);
 }
 static void maschine_jam_hid_write_led_pads_report(struct work_struct *work){
@@ -401,7 +407,7 @@ static void maschine_jam_hid_write_led_pads_report(struct work_struct *work){
 	memcpy(&buffer[MASCHINE_JAM_HID_REPORT_ID_BYTES], &mj_driver_data->hid_report_led_pads, MASCHINE_JAM_NUMBER_PAD_LEDS);
 	spin_unlock(&mj_driver_data->hid_report_led_pads_lock);
 	ret = hid_hw_output_report(mj_driver_data->mj_hid_device, buffer, MASCHINE_JAM_HID_REPORT_ID_BYTES + MASCHINE_JAM_NUMBER_PAD_LEDS);
-	printk(KERN_NOTICE "maschine_jam_hid_write_report() - 0x81, ret=%d", ret);
+	//printk(KERN_NOTICE "maschine_jam_hid_write_report() - 0x81, ret=%d", ret);
 	kfree(buffer);
 }
 static void maschine_jam_hid_write_led_smartstrips_report(struct work_struct *work){
@@ -468,7 +474,7 @@ static int maschine_jam_process_report01_knobs_data(struct maschine_jam_driver_d
 				mj_driver_data,
 				knob_config->type | knob_config->channel,
 				knob_config->key,
-				new_knob_value * 0x02
+				new_knob_value == (old_knob_value+1) % 0x10 ? 1 : 0
 			);
 		}
 	}
@@ -1850,8 +1856,6 @@ static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream){
 
 // get virtual midi data and transmit to physical maschine jam, cannot block
 static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substream, int up){
-	static struct snd_midi_event *midi_encoder = NULL;
-	struct snd_seq_event midi_event;
 	//static int num;
 	int sequencer_status;
 	unsigned long flags;
@@ -1860,38 +1864,23 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 	struct maschine_jam_output_node* sentinal_node;
 	struct maschine_jam_output_node* output_node;
 	uint8_t write_value;
+	struct snd_seq_event midi_event;
 
-	if (midi_encoder == NULL) {
-		if (snd_midi_event_new(128, &midi_encoder) == 0) {
-			snd_midi_event_reset_encode(midi_encoder);
-		} else {
-			printk(KERN_ALERT "Failed to create new midi encoder!\n");
-			return;
-		}
-	}
 	if (up != 0) {
 		while (snd_rawmidi_transmit(substream, &data, 1) == 1) {
 			//printk(KERN_NOTICE "%d - out_trigger data - %d", num++, data);
-			sequencer_status = snd_midi_event_encode_byte(midi_encoder, data, &midi_event);
+			spin_lock_irqsave(&mj_driver_data->midi_out_decoder_lock, flags);
+			sequencer_status = snd_midi_event_encode_byte(mj_driver_data->midi_out_decoder, data, &midi_event);
+			spin_unlock_irqrestore(&mj_driver_data->midi_out_decoder_lock, flags);
 			//printk(KERN_NOTICE "snd_midi_event_encode: sequencer status: %d", sequencer_status);
 			if (sequencer_status == 0) {
 				continue;
 			} else if (sequencer_status == 1) {
 				if (snd_seq_ev_is_channel_type(&midi_event)){
 					if (snd_seq_ev_is_note_type(&midi_event)){
-						printk(KERN_NOTICE "snd_midi_event_encode: note_event: channel:%d, note:%d, velocity:%d", \
-							midi_event.data.note.channel,
-							midi_event.data.note.note,
-							midi_event.data.note.velocity
-						);
 						sentinal_node = &mj_driver_data->midi_out_note_mapping[midi_event.data.note.channel][midi_event.data.note.note];
 						write_value = midi_event.data.note.velocity;
 					} else if (snd_seq_ev_is_control_type(&midi_event)){
-						printk(KERN_NOTICE "snd_midi_event_encode: control_event: channel:%d, param:%d, value:%d", \
-							midi_event.data.control.channel,
-							midi_event.data.control.param,
-							midi_event.data.control.value
-						);
 						sentinal_node = &mj_driver_data->midi_out_control_change_mapping[midi_event.data.control.channel][midi_event.data.control.param];
 						write_value = midi_event.data.control.value;
 					} else {
@@ -1900,23 +1889,39 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 					}
 					spin_lock_irqsave(&mj_driver_data->midi_out_mapping_lock, flags);
 					output_node = sentinal_node->node_list_head;
-					while(output_node != NULL){
-						if (output_node->type == MJ_OUTPUT_BUTTON_LED_NODE){
-							spin_lock(&mj_driver_data->hid_report_led_buttons_lock);
-							mj_driver_data->hid_report_led_buttons[output_node->index] = write_value;
-							spin_unlock(&mj_driver_data->hid_report_led_buttons_lock);
-							schedule_work(&mj_driver_data->hid_report_led_buttons_work);
-						}else if(output_node->type == MJ_OUTPUT_PAD_LED_NODE){
-							spin_lock(&mj_driver_data->hid_report_led_pads_lock);
-							mj_driver_data->hid_report_led_pads[output_node->index] = write_value;
-							spin_unlock(&mj_driver_data->hid_report_led_pads_lock);
-							schedule_work(&mj_driver_data->hid_report_led_pads_work);
-						}else if(output_node->type == MJ_OUTPUT_SMARTSTRIP_LED_NODE){
-							printk(KERN_NOTICE "snd_midi_event_encode: smartstrip node found\n");
-						}else{
-							printk(KERN_NOTICE "snd_midi_event_encode: invalid node type found\n");
+					if (output_node == NULL){
+						if (snd_seq_ev_is_note_type(&midi_event)){
+							printk(KERN_NOTICE "unmapped note_event: channel:%d, note:%d, velocity:%d\n", \
+								midi_event.data.note.channel,
+								midi_event.data.note.note,
+								midi_event.data.note.velocity
+							);
+						} else if (snd_seq_ev_is_control_type(&midi_event)){
+							printk(KERN_NOTICE "unmapped control_event: channel:%d, param:%d, value:%d\n", \
+								midi_event.data.control.channel,
+								midi_event.data.control.param,
+								midi_event.data.control.value
+							);
 						}
-						output_node = output_node->next;
+					} else {
+						while(output_node != NULL){
+							if (output_node->type == MJ_OUTPUT_BUTTON_LED_NODE){
+								spin_lock(&mj_driver_data->hid_report_led_buttons_lock);
+								mj_driver_data->hid_report_led_buttons[output_node->index] = write_value;
+								spin_unlock(&mj_driver_data->hid_report_led_buttons_lock);
+								schedule_work(&mj_driver_data->hid_report_led_buttons_work);
+							}else if(output_node->type == MJ_OUTPUT_PAD_LED_NODE){
+								spin_lock(&mj_driver_data->hid_report_led_pads_lock);
+								mj_driver_data->hid_report_led_pads[output_node->index] = write_value;
+								spin_unlock(&mj_driver_data->hid_report_led_pads_lock);
+								schedule_work(&mj_driver_data->hid_report_led_pads_work);
+							}else if(output_node->type == MJ_OUTPUT_SMARTSTRIP_LED_NODE){
+								printk(KERN_NOTICE "snd_midi_event_encode: smartstrip node found\n");
+							}else{
+								printk(KERN_NOTICE "snd_midi_event_encode: invalid node type found\n");
+							}
+							output_node = output_node->next;
+						}
 					}
 					spin_unlock_irqrestore(&mj_driver_data->midi_out_mapping_lock, flags);
 				} else if (snd_seq_ev_is_variable_type(&midi_event)){
@@ -2179,10 +2184,24 @@ static int maschine_jam_probe(struct hid_device *mj_hid_device, const struct hid
 		goto return_error_code;
 	}
 	maschine_jam_initialize_driver_data(mj_driver_data, mj_hid_device);
+	error_code = snd_midi_event_new(128, &mj_driver_data->midi_in_encoder);
+	if (error_code == 0) {
+		snd_midi_event_reset_encode(mj_driver_data->midi_in_encoder);
+	} else {
+		printk(KERN_ALERT "Failed to create new midi encoder!\n");
+		goto failure_free_driver_data;
+	}
+	error_code = snd_midi_event_new(128, &mj_driver_data->midi_out_decoder);
+	if (error_code == 0) {
+		snd_midi_event_reset_encode(mj_driver_data->midi_out_decoder);
+	} else {
+		printk(KERN_ALERT "Failed to create new midi decoder!\n");
+		goto failure_free_midi_encoder;
+	}
 	error_code = maschine_jam_create_sound_card(mj_driver_data);
 	if (error_code != 0){
 		printk(KERN_ALERT "Failed to create sound card.\n");
-		goto failure_free_driver_data;
+		goto failure_free_midi_decoder;
 	}
 	error_code = maschine_jam_create_sysfs_inputs_interface(mj_driver_data);
 	if (error_code != 0){
@@ -2214,7 +2233,6 @@ static int maschine_jam_probe(struct hid_device *mj_hid_device, const struct hid
 		goto failure_hid_hw_stop;
 	}
 
-	printk(KERN_ALERT "Maschine JAM probe() finished - %d", error_code);
 	goto return_error_code;
 
 failure_hid_hw_stop:
@@ -2225,9 +2243,14 @@ failure_delete_sysfs_inputs_interface:
 	maschine_jam_delete_sysfs_inputs_interface(mj_driver_data);
 failure_delete_sound_card:
 	maschine_jam_delete_sound_card(mj_driver_data);
+failure_free_midi_decoder:
+	snd_midi_event_free(mj_driver_data->midi_out_decoder);
+failure_free_midi_encoder:
+	snd_midi_event_free(mj_driver_data->midi_in_encoder);
 failure_free_driver_data:
 	kfree(mj_driver_data);
 return_error_code:
+	printk(KERN_NOTICE "Maschine JAM probe() finished - %d\n", error_code);
 	return error_code;
 }
 
@@ -2241,6 +2264,8 @@ static void maschine_jam_remove(struct hid_device *mj_hid_device){
 		maschine_jam_delete_sound_card(mj_driver_data);
 		maschine_jam_delete_sysfs_inputs_interface(mj_driver_data);
 		maschine_jam_delete_sysfs_outputs_interface(mj_driver_data);
+		snd_midi_event_free(mj_driver_data->midi_out_decoder);
+		snd_midi_event_free(mj_driver_data->midi_in_encoder);
 		kfree(mj_driver_data);
 	}
 
