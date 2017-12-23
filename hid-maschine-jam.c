@@ -36,13 +36,14 @@ enum maschine_jam_smartstrip_finger_mode{
 
 #define MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS VERIFY_OCTAL_PERMISSIONS(0664)
 
+#define MASCHINE_JAM_SYSEX_MAX_LENGTH 28
 #define MASCHINE_JAM_MIDI_CHANNELS_MAX 16
 #define MASCHINE_JAM_MIDI_NOTES_MAX 128
 #define MASCHINE_JAM_MIDI_CONTROL_CHANGE_PARAMS_MAX 128
 enum maschine_jam_midi_type{
-	MJ_MIDI_TYPE_NOTE = 0x90,
-	MJ_MIDI_TYPE_AFTERTOUCH = 0xA0,
-	MJ_MIDI_TYPE_CONTROL_CHANGE = 0xB0
+	MJ_MIDI_TYPE_NOTE,
+	MJ_MIDI_TYPE_AFTERTOUCH,
+	MJ_MIDI_TYPE_CONTROL_CHANGE
 };
 #define MJ_MIDI_TYPE_NOTE_STRING "note\n"
 #define MJ_MIDI_TYPE_AFTERTOUCH_STRING "aftertouch\n"
@@ -131,13 +132,13 @@ struct maschine_jam_driver_data {
 	struct snd_rawmidi_substream	*midi_in_substream;
 	unsigned long			midi_in_up;
 	spinlock_t				midi_in_lock;
-	struct snd_midi_event*	midi_in_encoder;
-	spinlock_t				midi_in_encoder_lock;
+	struct snd_midi_event*	midi_in_decoder;
+	spinlock_t				midi_in_decoder_lock;
 	struct snd_rawmidi_substream	*midi_out_substream;
 	unsigned long			midi_out_up;
 	spinlock_t				midi_out_lock;
-	struct snd_midi_event*	midi_out_decoder;
-	spinlock_t				midi_out_decoder_lock;
+	struct snd_midi_event*	midi_out_encoder;
+	spinlock_t				midi_out_encoder_lock;
 };
 
 static void maschine_jam_hid_write_led_buttons_report(struct work_struct *);
@@ -245,11 +246,11 @@ static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data 
 	mj_driver_data->midi_in_substream = NULL;
 	mj_driver_data->midi_in_up = 0;
 	spin_lock_init(&mj_driver_data->midi_in_lock);
-	spin_lock_init(&mj_driver_data->midi_in_encoder_lock);
+	spin_lock_init(&mj_driver_data->midi_in_decoder_lock);
 	mj_driver_data->midi_out_substream = NULL;
 	mj_driver_data->midi_out_up = 0;
 	spin_lock_init(&mj_driver_data->midi_out_lock);
-	spin_lock_init(&mj_driver_data->midi_out_decoder_lock);
+	spin_lock_init(&mj_driver_data->midi_out_encoder_lock);
 }
 
 static int8_t maschine_jam_output_mapping_add(struct maschine_jam_output_node* mapping_sentinal, struct maschine_jam_output_node* output_node){
@@ -413,26 +414,58 @@ static void maschine_jam_hid_write_led_pads_report(struct work_struct *work){
 static void maschine_jam_hid_write_led_smartstrips_report(struct work_struct *work){
 }
 
-static int maschine_jam_write_midi_note(struct maschine_jam_driver_data *mj_driver_data,
-	unsigned char status, unsigned char note, unsigned char velocity){
-	int bytes_transmitted = 0;
+static int maschine_jam_write_snd_seq_event(struct maschine_jam_driver_data *driver_data, struct snd_seq_event* event){
+	uint8_t bytes_transmitted = 0, message_size = 0;
 	unsigned long flags;
-	unsigned char buffer[3];
+	unsigned char buffer[MASCHINE_JAM_SYSEX_MAX_LENGTH];
 
-	buffer[0] = status;
-	buffer[1] = note;
-	buffer[2] = velocity;
+	spin_lock_irqsave(&driver_data->midi_in_decoder_lock, flags);
+	message_size = snd_midi_event_decode(driver_data->midi_in_decoder, buffer, MASCHINE_JAM_SYSEX_MAX_LENGTH, event);
+	spin_unlock_irqrestore(&driver_data->midi_in_decoder_lock, flags);
 
-	printk(KERN_ALERT "write_midi_note() - %02X %02X %02X", status, note, velocity);
-
-	spin_lock_irqsave(&mj_driver_data->midi_in_lock, flags);
-	if (mj_driver_data->midi_in_substream){
-		bytes_transmitted = snd_rawmidi_receive(mj_driver_data->midi_in_substream, buffer, 3);
+	if (driver_data->midi_in_substream != NULL){
+		spin_lock_irqsave(&driver_data->midi_in_lock, flags);
+		bytes_transmitted = snd_rawmidi_receive(driver_data->midi_in_substream, buffer, message_size);
+		spin_unlock_irqrestore(&driver_data->midi_in_lock, flags);
+	}else{
+		printk(KERN_ALERT "maschine_jam_write_snd_seq_event: no midi_in_substeam to write to.");
 	}
-	spin_unlock_irqrestore(&mj_driver_data->midi_in_lock, flags);
-	printk(KERN_ALERT "snd_rawmidi_transmit() - %d", bytes_transmitted);
+	printk(KERN_NOTICE "maschine_jam_write_snd_seq_event: message_size: %d, bytes_transmitted: %d\n", message_size, bytes_transmitted);
 
 	return bytes_transmitted;
+}
+static int maschine_jam_write_midi_event(struct maschine_jam_driver_data *driver_data,
+	enum maschine_jam_midi_type midi_type, uint8_t channel, uint8_t key, uint8_t value){
+	struct snd_seq_event event;
+	
+	switch(midi_type){
+		case MJ_MIDI_TYPE_NOTE:
+			printk(KERN_NOTICE "maschine_jam_write_midi_event: noteon: %d %d %d\n", channel, key, value);
+			event.type = SNDRV_SEQ_EVENT_NOTEON;
+			event.data.note.channel = channel;
+			event.data.note.note = key;
+			event.data.note.velocity = value;
+			break;
+		case MJ_MIDI_TYPE_AFTERTOUCH:
+			printk(KERN_NOTICE "maschine_jam_write_midi_event: aftertouch: %d %d %d\n", channel, key, value);
+			event.type = SNDRV_SEQ_EVENT_KEYPRESS;
+			event.data.note.channel = channel;
+			event.data.note.note = key;
+			event.data.note.velocity = value;
+			break;
+		case MJ_MIDI_TYPE_CONTROL_CHANGE:
+			printk(KERN_NOTICE "maschine_jam_write_midi_event: control_change: %d %d %d\n", channel, key, value);
+			event.type = SNDRV_SEQ_EVENT_CONTROLLER;
+			event.data.control.channel = channel;
+			event.data.control.param = key;
+			event.data.control.value = value;
+			break;
+		default:
+			printk(KERN_ALERT "maschine_jam_write_midi_event: invalid midi type.\n");
+			return 0;
+			break;
+	}
+	return maschine_jam_write_snd_seq_event(driver_data, &event);
 }
 
 static inline uint8_t maschine_jam_get_knob_nibble(u8 *data, uint8_t offset){
@@ -470,9 +503,10 @@ static int maschine_jam_process_report01_knobs_data(struct maschine_jam_driver_d
 			//printk(KERN_ALERT "knob_nibble: %d, old value: %d, new value: %d", knob_nibble, old_knob_value, new_knob_value);
 			knob_config = &mj_driver_data->midi_in_knob_configs[knob_nibble];
 			maschine_jam_set_knob_nibble(mj_driver_data->hid_report01_data_knobs, knob_nibble, new_knob_value);
-			return_value = maschine_jam_write_midi_note(
+			return_value = maschine_jam_write_midi_event(
 				mj_driver_data,
-				knob_config->type | knob_config->channel,
+				knob_config->type,
+				knob_config->channel,
 				knob_config->key,
 				new_knob_value == (old_knob_value+1) % 0x10 ? 1 : 0
 			);
@@ -495,9 +529,10 @@ static int maschine_jam_process_report01_buttons_data(struct maschine_jam_driver
 			//printk(KERN_ALERT "button_bit: %d, old value: %d, new value: %d", button_bit, old_button_value, new_button_value);
 			button_config = &mj_driver_data->midi_in_button_configs[button_bit];
 			maschine_jam_toggle_button_bit(mj_driver_data->hid_report01_data_buttons, button_bit);
-			return_value = maschine_jam_write_midi_note(
+			return_value = maschine_jam_write_midi_event(
 				mj_driver_data,
-				button_config->type | button_config->channel,
+				button_config->type,
+				button_config->channel,
 				button_config->key,
 				button_config->value_max * new_button_value
 			);
@@ -554,18 +589,20 @@ static int maschine_jam_process_report02_smartstrips_data(struct maschine_jam_dr
 				smartstrip_data_is_dirty = 1;
 				if (old_smartstrip.touch_value[touch_index] == 0 || new_smartstrip.touch_value[touch_index] == 0){
 					smartstrip_config = &mj_driver_data->midi_in_smartstrip_configs[smartstrip_index][touch_index][MJ_SMARTSTRIP_FINGER_MODE_TOUCH];
-					maschine_jam_write_midi_note(
+					maschine_jam_write_midi_event(
 						mj_driver_data,
-						smartstrip_config->type | smartstrip_config->channel,
+						smartstrip_config->type,
+						smartstrip_config->channel,
 						smartstrip_config->key,
 						new_smartstrip.touch_value[touch_index] ? 127 : 0
 					);
 				}
 				if (new_smartstrip.touch_value[touch_index] != 0){
 					smartstrip_config = &mj_driver_data->midi_in_smartstrip_configs[smartstrip_index][touch_index][MJ_SMARTSTRIP_FINGER_MODE_SLIDE];
-					maschine_jam_write_midi_note(
+					maschine_jam_write_midi_event(
 						mj_driver_data,
-						smartstrip_config->type | smartstrip_config->channel,
+						smartstrip_config->type,
+						smartstrip_config->channel,
 						smartstrip_config->key,
 						new_smartstrip.touch_value[touch_index] >> 3
 					);
@@ -1789,22 +1826,22 @@ static struct snd_device_ops maschine_jam_snd_device_ops = {
 static int maschine_jam_midi_in_open(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "in_open() - 1\n");
+	printk(KERN_NOTICE "maschine_jam_midi_in_open() - 1\n");
 	spin_lock_irq(&mj_driver_data->midi_in_lock);
 	mj_driver_data->midi_in_substream = substream;
 	spin_unlock_irq(&mj_driver_data->midi_in_lock);
-	printk(KERN_ALERT "in_open() - 2\n");
+	printk(KERN_NOTICE "maschine_jam_midi_in_open() - 2\n");
 	return 0;
 }
 
 static int maschine_jam_midi_in_close(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "in_close() - 1\n");
+	printk(KERN_NOTICE "maschine_jam_midi_in_close() - 1\n");
 	spin_lock_irq(&mj_driver_data->midi_in_lock);
 	mj_driver_data->midi_in_substream = NULL;
 	spin_unlock_irq(&mj_driver_data->midi_in_lock);
-	printk(KERN_ALERT "in_close() - 2\n");
+	printk(KERN_NOTICE "maschine_jam_midi_in_close() - 2\n");
 	return 0;
 }
 
@@ -1812,11 +1849,11 @@ static void maschine_jam_midi_in_trigger(struct snd_rawmidi_substream *substream
 	unsigned long flags;
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "in_trigger() - 1\n");
+	printk(KERN_NOTICE "maschine_jam_midi_in_trigger() - 1\n");
 	spin_lock_irqsave(&mj_driver_data->midi_in_lock, flags);
 	mj_driver_data->midi_in_up = up;
 	spin_unlock_irqrestore(&mj_driver_data->midi_in_lock, flags);
-	printk(KERN_ALERT "in_trigger() - 2\n");
+	printk(KERN_NOTICE "maschine_jam_midi_in_trigger() - 2\n");
 }
 
 // MIDI_IN operations
@@ -1829,28 +1866,28 @@ static struct snd_rawmidi_ops maschine_jam_midi_in_ops = {
 static int maschine_jam_midi_out_open(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "out_open() - 1\n");
+	printk(KERN_NOTICE "maschine_jam_midi_out_open() - 1\n");
 
 	spin_lock_irq(&mj_driver_data->midi_out_lock);
 	mj_driver_data->midi_out_substream = substream;
 	mj_driver_data->midi_out_up = 0;
 	spin_unlock_irq(&mj_driver_data->midi_out_lock);
 
-	printk(KERN_ALERT "out_open() - 2\n");
+	printk(KERN_NOTICE "maschine_jam_midi_out_open() - 2\n");
 	return 0;
 }
 
 static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream){
 	struct maschine_jam_driver_data *mj_driver_data = substream->rmidi->private_data;
 
-	printk(KERN_ALERT "out_close() - 1\n");
+	printk(KERN_NOTICE "maschine_jam_midi_out_close() - 1\n");
 
 	spin_lock_irq(&mj_driver_data->midi_out_lock);
 	mj_driver_data->midi_out_substream = NULL;
 	mj_driver_data->midi_out_up = 0;
 	spin_unlock_irq(&mj_driver_data->midi_out_lock);
 
-	printk(KERN_ALERT "out_close() - 2\n");
+	printk(KERN_NOTICE "maschine_jam_midi_out_close() - 2\n");
 	return 0;
 }
 
@@ -1869,9 +1906,9 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 	if (up != 0) {
 		while (snd_rawmidi_transmit(substream, &data, 1) == 1) {
 			//printk(KERN_NOTICE "%d - out_trigger data - %d", num++, data);
-			spin_lock_irqsave(&mj_driver_data->midi_out_decoder_lock, flags);
-			sequencer_status = snd_midi_event_encode_byte(mj_driver_data->midi_out_decoder, data, &midi_event);
-			spin_unlock_irqrestore(&mj_driver_data->midi_out_decoder_lock, flags);
+			spin_lock_irqsave(&mj_driver_data->midi_out_encoder_lock, flags);
+			sequencer_status = snd_midi_event_encode_byte(mj_driver_data->midi_out_encoder, data, &midi_event);
+			spin_unlock_irqrestore(&mj_driver_data->midi_out_encoder_lock, flags);
 			//printk(KERN_NOTICE "snd_midi_event_encode: sequencer status: %d", sequencer_status);
 			if (sequencer_status == 0) {
 				continue;
@@ -2184,16 +2221,17 @@ static int maschine_jam_probe(struct hid_device *mj_hid_device, const struct hid
 		goto return_error_code;
 	}
 	maschine_jam_initialize_driver_data(mj_driver_data, mj_hid_device);
-	error_code = snd_midi_event_new(128, &mj_driver_data->midi_in_encoder);
+	error_code = snd_midi_event_new(128, &mj_driver_data->midi_in_decoder);
 	if (error_code == 0) {
-		snd_midi_event_reset_encode(mj_driver_data->midi_in_encoder);
+		snd_midi_event_reset_decode(mj_driver_data->midi_in_decoder);
+		snd_midi_event_no_status(mj_driver_data->midi_in_decoder, 0);
 	} else {
 		printk(KERN_ALERT "Failed to create new midi encoder!\n");
 		goto failure_free_driver_data;
 	}
-	error_code = snd_midi_event_new(128, &mj_driver_data->midi_out_decoder);
+	error_code = snd_midi_event_new(128, &mj_driver_data->midi_out_encoder);
 	if (error_code == 0) {
-		snd_midi_event_reset_encode(mj_driver_data->midi_out_decoder);
+		snd_midi_event_reset_encode(mj_driver_data->midi_out_encoder);
 	} else {
 		printk(KERN_ALERT "Failed to create new midi decoder!\n");
 		goto failure_free_midi_encoder;
@@ -2244,9 +2282,9 @@ failure_delete_sysfs_inputs_interface:
 failure_delete_sound_card:
 	maschine_jam_delete_sound_card(mj_driver_data);
 failure_free_midi_decoder:
-	snd_midi_event_free(mj_driver_data->midi_out_decoder);
+	snd_midi_event_free(mj_driver_data->midi_out_encoder);
 failure_free_midi_encoder:
-	snd_midi_event_free(mj_driver_data->midi_in_encoder);
+	snd_midi_event_free(mj_driver_data->midi_in_decoder);
 failure_free_driver_data:
 	kfree(mj_driver_data);
 return_error_code:
@@ -2264,8 +2302,8 @@ static void maschine_jam_remove(struct hid_device *mj_hid_device){
 		maschine_jam_delete_sound_card(mj_driver_data);
 		maschine_jam_delete_sysfs_inputs_interface(mj_driver_data);
 		maschine_jam_delete_sysfs_outputs_interface(mj_driver_data);
-		snd_midi_event_free(mj_driver_data->midi_out_decoder);
-		snd_midi_event_free(mj_driver_data->midi_in_encoder);
+		snd_midi_event_free(mj_driver_data->midi_out_encoder);
+		snd_midi_event_free(mj_driver_data->midi_in_decoder);
 		kfree(mj_driver_data);
 	}
 
