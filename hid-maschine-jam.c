@@ -43,7 +43,8 @@ enum maschine_jam_smartstrip_finger_mode{
 enum maschine_jam_midi_type{
 	MJ_MIDI_TYPE_NOTE,
 	MJ_MIDI_TYPE_AFTERTOUCH,
-	MJ_MIDI_TYPE_CONTROL_CHANGE
+	MJ_MIDI_TYPE_CONTROL_CHANGE,
+	MJ_MIDI_TYPE_SYSEX
 };
 #define MJ_MIDI_TYPE_NOTE_STRING "note\n"
 #define MJ_MIDI_TYPE_AFTERTOUCH_STRING "aftertouch\n"
@@ -415,14 +416,19 @@ static void maschine_jam_hid_write_led_smartstrips_report(struct work_struct *wo
 }
 
 static int maschine_jam_write_snd_seq_event(struct maschine_jam_driver_data *driver_data, struct snd_seq_event* event){
-	uint8_t bytes_transmitted = 0, message_size = 0;
+	int8_t bytes_transmitted = 0, message_size = 0;
 	unsigned long flags;
 	unsigned char buffer[MASCHINE_JAM_SYSEX_MAX_LENGTH];
 
 	spin_lock_irqsave(&driver_data->midi_in_decoder_lock, flags);
 	message_size = snd_midi_event_decode(driver_data->midi_in_decoder, buffer, MASCHINE_JAM_SYSEX_MAX_LENGTH, event);
 	spin_unlock_irqrestore(&driver_data->midi_in_decoder_lock, flags);
-
+	
+	if (message_size <= 0){
+		printk(KERN_ALERT "maschine_jam_write_snd_seq_event: message_size: %d <= 0\n", message_size);
+		return 0;
+	}
+	
 	if (driver_data->midi_in_substream != NULL){
 		spin_lock_irqsave(&driver_data->midi_in_lock, flags);
 		bytes_transmitted = snd_rawmidi_receive(driver_data->midi_in_substream, buffer, message_size);
@@ -465,6 +471,19 @@ static int maschine_jam_write_midi_event(struct maschine_jam_driver_data *driver
 			return 0;
 			break;
 	}
+	return maschine_jam_write_snd_seq_event(driver_data, &event);
+}
+static int maschine_jam_write_sysex_event(struct maschine_jam_driver_data *driver_data, unsigned char* message, uint8_t message_length){
+	struct snd_seq_event event;
+	
+	printk(KERN_NOTICE "maschine_jam_write_sysex_event: length: %d. message: %02X%02X%02X%02X\n", message_length, message[0], message[1], message[2], message[3]);
+	event.type = SNDRV_SEQ_EVENT_SYSEX;
+	event.flags = 0;
+	event.flags &= ~SNDRV_SEQ_EVENT_LENGTH_MASK;
+	event.flags |= SNDRV_SEQ_EVENT_LENGTH_VARIABLE;
+	event.data.ext.ptr = message;
+	event.data.ext.len = message_length;
+
 	return maschine_jam_write_snd_seq_event(driver_data, &event);
 }
 
@@ -519,6 +538,7 @@ static int maschine_jam_process_report01_buttons_data(struct maschine_jam_driver
 	unsigned int button_bit;
 	uint8_t old_button_value, new_button_value;
 	struct maschine_jam_midi_config *button_config;
+	unsigned char shift_message[] = { 0xf0, 0x00, 0x21, 0x09, 0x15, 0x00, 0x4d, 0x50, 0x00, 0x01, 0x4d, 0x00, 0xf7 };
 
 	//printk(KERN_ALERT "report - %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X", data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]);
 
@@ -529,7 +549,15 @@ static int maschine_jam_process_report01_buttons_data(struct maschine_jam_driver
 			//printk(KERN_ALERT "button_bit: %d, old value: %d, new value: %d", button_bit, old_button_value, new_button_value);
 			button_config = &driver_data->midi_in_button_configs[button_bit];
 			maschine_jam_toggle_button_bit(driver_data->hid_report01_data_buttons, button_bit);
-			return_value = maschine_jam_write_midi_event(
+			if (button_bit == 105){
+				shift_message[11] |= new_button_value;
+				return_value = maschine_jam_write_sysex_event(
+					driver_data,
+					shift_message,
+					sizeof(shift_message)
+				);
+			}
+			return_value |= maschine_jam_write_midi_event(
 				driver_data,
 				button_config->type,
 				button_config->channel,
