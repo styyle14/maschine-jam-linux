@@ -1,7 +1,37 @@
 # maschine-jam-linux
 Maschine Jam HID Driver for Linux
 
-Work in progress. Leave me a bug report or message if you would like to help out!
+It's still a work in progress, but these are the steps I run to get it working on Ubuntu 17.10:
+
+```
+
+1.) # make clean && make all
+2.) Unplug USB cable from Maschine Jam.
+3.) # sudo insmod hid-maschine-jam.ko
+4.) Plug the Maschine Jam back in.
+5.) # sudo ./scripts/controller_mapping_bitwig.sh /sys/bus/hid/devices/0003:17CC*
+6.) Launch Bitwig!
+
+```
+
+If you want to tinker with the module, you can use the following steps:
+
+```
+1.) Change source code.
+2.) # make clean && make all
+3.) Unplug USB cable from Maschine Jam.
+Note: after running the below command, you may temporarily lose control of your HID devices (mouse keyboard) until you plug the Maschine Jam back in.
+4.) # sudo rmmod hid_maschine_jam; sudo rmmod hid_generic; sudo insmod hid-maschine-jam.ko
+5.) Plug the Maschine Jam back in.
+6.) # sudo ./scripts/controller_mapping_bitwig.sh /sys/bus/hid/devices/0003:17CC*
+7.) Inside Bitwig, go to Settings->Controllers, and deactivate then reactivate the "Native Instruments/Maschine JAM" controller.
+
+```
+
+Leave me a bug report or message if you would like to help out!
+
+
+Some debugging details:
 
 ```
 $ dmesg | tail -n 8
