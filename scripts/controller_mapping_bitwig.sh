@@ -5,7 +5,7 @@ set -e
 
 if [ $# -ne 1 ]; then
 	echo "Incorrect number of parameters."
-	echo "Usage: $(basename "$0") [Maschine Jam Sysfs Path]" 
+	echo "Usage: $(basename "$0") [Maschine Jam Sysfs Path]"
 	echo "Exiting now."
 	exit 1
 fi
@@ -20,7 +20,7 @@ fi
 midi_map_io(){
 	if [ $# -ne 4 ]; then
 		echo "Incorrect number of parameters."
-		echo "Usage: $(basename "$0") [sysfs directory] [channel] [type] [key]" 
+		echo "Usage: $(basename "$0") [sysfs directory] [channel] [type] [key]"
 		echo "Exiting now."
 		exit 1
 	fi
@@ -47,12 +47,12 @@ midi_map_io(){
 	echo "$IO_CHANNEL" > "${IO_DIRECTORY}/channel"
 	echo "$IO_TYPE" > "${IO_DIRECTORY}/type"
 	echo "$IO_KEY" > "${IO_DIRECTORY}/key"
-	
+
 	NAME="$(basename ${IO_DIRECTORY})"
 	UP_ONE="$(dirname "$IO_DIRECTORY")"
 	UP_TWO="$(dirname "$UP_ONE")"
 	echo "$(basename ${UP_TWO})/$(basename ${UP_ONE})/${NAME}: channel=${IO_CHANNEL}, type=${IO_TYPE}, key=${IO_KEY}"
-	
+
 	return 0
 }
 
@@ -68,7 +68,7 @@ midi_map_io(){
 			midi_map_io navigate_down 0 control_change 41
 			midi_map_io navigate_left 0 control_change 42
 			midi_map_io navigate_right 0 control_change 43
-			
+
 			midi_map_io scene_1 1 note 0
 			midi_map_io scene_2 1 note 1
 			midi_map_io scene_3 1 note 2
@@ -157,20 +157,20 @@ midi_map_io(){
 			midi_map_io encoder_push 0 control_change 87
 			midi_map_io encoder_touch 0 control_change 88
 			midi_map_io browse 0 control_change 44
-			
+
 			midi_map_io macro 0 control_change 90
 			midi_map_io level 0 control_change 91
 			midi_map_io aux 0 control_change 92
 			midi_map_io control 0 control_change 97
 			midi_map_io auto 0 control_change 98
-			
+
 			midi_map_io perform 0 control_change 45
 			midi_map_io notes 0 control_change 46
 			midi_map_io lock 0 control_change 47
 			midi_map_io tune 0 control_change 48
 			midi_map_io swing 0 control_change 49
 			midi_map_io select 0 control_change 80
-			
+
 			midi_map_io play 0 control_change 108
 			midi_map_io rec 0 control_change 109
 			midi_map_io page_left 0 control_change 107
@@ -192,7 +192,7 @@ midi_map_io(){
 			midi_map_io 6AS 0 control_change 13
 			midi_map_io 7AS 0 control_change 14
 			midi_map_io 8AS 0 control_change 15
-			
+
 			midi_map_io 1BS 0 control_change 16
 			midi_map_io 2BS 0 control_change 17
 			midi_map_io 3BS 0 control_change 18
@@ -220,20 +220,20 @@ midi_map_io(){
 			midi_map_io in_1 0 control_change 62
 			midi_map_io cue 0 control_change 63
 			midi_map_io browse 0 control_change 44
-			
+
 			midi_map_io macro 0 control_change 90
 			midi_map_io level 0 control_change 91
 			midi_map_io aux 0 control_change 92
 			midi_map_io control 0 control_change 97
 			midi_map_io auto 0 control_change 98
-			
+
 			midi_map_io perform 0 control_change 45
 			midi_map_io notes 0 control_change 46
 			midi_map_io lock 0 control_change 47
 			midi_map_io tune 0 control_change 48
 			midi_map_io swing 0 control_change 49
 			midi_map_io select 0 control_change 80
-			
+
 			midi_map_io play 0 control_change 108
 			midi_map_io rec 0 control_change 109
 			midi_map_io page_left 0 control_change 107
@@ -242,7 +242,7 @@ midi_map_io(){
 			midi_map_io grid 0 control_change 113
 			midi_map_io solo 0 control_change 111
 			midi_map_io mute 0 control_change 112
-			
+
 			midi_map_io level_left_1 0 control_change 8
 			midi_map_io level_left_2 0 control_change 9
 			midi_map_io level_left_3 0 control_change 10
@@ -259,7 +259,7 @@ midi_map_io(){
 			midi_map_io level_right_6 0 control_change 25
 			midi_map_io level_right_7 0 control_change 26
 			midi_map_io level_right_8 0 control_change 27
-			
+
 			midi_map_io scene_1 1 note 0
 			midi_map_io scene_2 1 note 1
 			midi_map_io scene_3 1 note 2
@@ -340,6 +340,17 @@ midi_map_io(){
 			midi_map_io matrix_8x6 0 note 83
 			midi_map_io matrix_8x7 0 note 84
 			midi_map_io matrix_8x8 0 note 85
+		)
+		(cd smartstrips
+			#purely for the purpose of testing!
+			midi_map_io led_1x1 0 control_change 38
+			midi_map_io led_1x11 0 control_change 39
+			midi_map_io led_4x1 0 note 82
+			midi_map_io led_4x11 0 note 83
+			midi_map_io led_5x4 0 note 84
+			midi_map_io led_5x6 0 note 85
+			midi_map_io led_8x1 0 control_change 8
+			midi_map_io led_8x11 0 control_change 9
 		)
 	)
 )
