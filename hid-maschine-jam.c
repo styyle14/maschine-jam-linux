@@ -1912,182 +1912,182 @@ static const struct attribute_group *maschine_jam_outputs_buttons_groups[] = {
 		.name = #_name, \
 		.attrs = maschine_jam_outputs_smartstrip_ ## _name ## _attributes, \
 	}
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x1, IO_ATTRIBUTE_LED_SMARTSTRIP, 0);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x2, IO_ATTRIBUTE_LED_SMARTSTRIP, 1);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x3, IO_ATTRIBUTE_LED_SMARTSTRIP, 2);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x4, IO_ATTRIBUTE_LED_SMARTSTRIP, 3);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x5, IO_ATTRIBUTE_LED_SMARTSTRIP, 4);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x6, IO_ATTRIBUTE_LED_SMARTSTRIP, 5);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x7, IO_ATTRIBUTE_LED_SMARTSTRIP, 6);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x8, IO_ATTRIBUTE_LED_SMARTSTRIP, 7);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x9, IO_ATTRIBUTE_LED_SMARTSTRIP, 8);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 0);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 1);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 2);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 3);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 4);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 5);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 6);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 7);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 8);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 9);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 10);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x1, IO_ATTRIBUTE_LED_SMARTSTRIP, 11);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x2, IO_ATTRIBUTE_LED_SMARTSTRIP, 12);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x3, IO_ATTRIBUTE_LED_SMARTSTRIP, 13);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x4, IO_ATTRIBUTE_LED_SMARTSTRIP, 14);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x5, IO_ATTRIBUTE_LED_SMARTSTRIP, 15);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x6, IO_ATTRIBUTE_LED_SMARTSTRIP, 16);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x7, IO_ATTRIBUTE_LED_SMARTSTRIP, 17);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x8, IO_ATTRIBUTE_LED_SMARTSTRIP, 18);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x9, IO_ATTRIBUTE_LED_SMARTSTRIP, 19);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 11);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 12);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 13);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 14);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 15);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 16);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 17);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 18);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 19);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 20);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 21);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x1, IO_ATTRIBUTE_LED_SMARTSTRIP, 22);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x2, IO_ATTRIBUTE_LED_SMARTSTRIP, 23);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x3, IO_ATTRIBUTE_LED_SMARTSTRIP, 24);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x4, IO_ATTRIBUTE_LED_SMARTSTRIP, 25);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x5, IO_ATTRIBUTE_LED_SMARTSTRIP, 26);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x6, IO_ATTRIBUTE_LED_SMARTSTRIP, 27);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x7, IO_ATTRIBUTE_LED_SMARTSTRIP, 28);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x8, IO_ATTRIBUTE_LED_SMARTSTRIP, 29);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x9, IO_ATTRIBUTE_LED_SMARTSTRIP, 30);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 22);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 23);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 24);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 25);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 26);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 27);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 28);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 29);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 30);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 31);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 32);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x1, IO_ATTRIBUTE_LED_SMARTSTRIP, 33);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x2, IO_ATTRIBUTE_LED_SMARTSTRIP, 34);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x3, IO_ATTRIBUTE_LED_SMARTSTRIP, 35);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x4, IO_ATTRIBUTE_LED_SMARTSTRIP, 36);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x5, IO_ATTRIBUTE_LED_SMARTSTRIP, 37);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x6, IO_ATTRIBUTE_LED_SMARTSTRIP, 38);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x7, IO_ATTRIBUTE_LED_SMARTSTRIP, 39);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x8, IO_ATTRIBUTE_LED_SMARTSTRIP, 40);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x9, IO_ATTRIBUTE_LED_SMARTSTRIP, 41);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 33);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 34);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 35);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 36);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 37);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 38);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 39);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 40);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 41);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 42);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 43);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x1, IO_ATTRIBUTE_LED_SMARTSTRIP, 44);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x2, IO_ATTRIBUTE_LED_SMARTSTRIP, 45);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x3, IO_ATTRIBUTE_LED_SMARTSTRIP, 46);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x4, IO_ATTRIBUTE_LED_SMARTSTRIP, 47);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x5, IO_ATTRIBUTE_LED_SMARTSTRIP, 48);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x6, IO_ATTRIBUTE_LED_SMARTSTRIP, 49);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x7, IO_ATTRIBUTE_LED_SMARTSTRIP, 50);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x8, IO_ATTRIBUTE_LED_SMARTSTRIP, 51);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x9, IO_ATTRIBUTE_LED_SMARTSTRIP, 52);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 44);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 45);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 46);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 47);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 48);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 49);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 50);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 51);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 52);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 53);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 54);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x1, IO_ATTRIBUTE_LED_SMARTSTRIP, 55);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x2, IO_ATTRIBUTE_LED_SMARTSTRIP, 56);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x3, IO_ATTRIBUTE_LED_SMARTSTRIP, 57);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x4, IO_ATTRIBUTE_LED_SMARTSTRIP, 58);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x5, IO_ATTRIBUTE_LED_SMARTSTRIP, 59);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x6, IO_ATTRIBUTE_LED_SMARTSTRIP, 60);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x7, IO_ATTRIBUTE_LED_SMARTSTRIP, 61);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x8, IO_ATTRIBUTE_LED_SMARTSTRIP, 62);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x9, IO_ATTRIBUTE_LED_SMARTSTRIP, 63);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 55);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 56);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 57);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 58);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 59);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 60);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 61);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 62);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 63);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 64);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 65);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x1, IO_ATTRIBUTE_LED_SMARTSTRIP, 66);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x2, IO_ATTRIBUTE_LED_SMARTSTRIP, 67);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x3, IO_ATTRIBUTE_LED_SMARTSTRIP, 68);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x4, IO_ATTRIBUTE_LED_SMARTSTRIP, 69);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x5, IO_ATTRIBUTE_LED_SMARTSTRIP, 70);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x6, IO_ATTRIBUTE_LED_SMARTSTRIP, 71);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x7, IO_ATTRIBUTE_LED_SMARTSTRIP, 72);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x8, IO_ATTRIBUTE_LED_SMARTSTRIP, 73);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x9, IO_ATTRIBUTE_LED_SMARTSTRIP, 74);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 66);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 67);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 68);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 69);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 70);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 71);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 72);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 73);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 74);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 75);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 76);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x1, IO_ATTRIBUTE_LED_SMARTSTRIP, 77);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x2, IO_ATTRIBUTE_LED_SMARTSTRIP, 78);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x3, IO_ATTRIBUTE_LED_SMARTSTRIP, 79);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x4, IO_ATTRIBUTE_LED_SMARTSTRIP, 80);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x5, IO_ATTRIBUTE_LED_SMARTSTRIP, 81);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x6, IO_ATTRIBUTE_LED_SMARTSTRIP, 82);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x7, IO_ATTRIBUTE_LED_SMARTSTRIP, 83);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x8, IO_ATTRIBUTE_LED_SMARTSTRIP, 84);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x9, IO_ATTRIBUTE_LED_SMARTSTRIP, 85);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 77);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 78);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 79);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 80);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 81);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 82);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 83);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 84);
+MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 85);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 86);
 MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 87);
 
 static const struct attribute_group *maschine_jam_outputs_smartstrips_groups[] = {
-	&maschine_jam_outputs_smartstrip_led_1x1_group,
-	&maschine_jam_outputs_smartstrip_led_1x2_group,
-	&maschine_jam_outputs_smartstrip_led_1x3_group,
-	&maschine_jam_outputs_smartstrip_led_1x4_group,
-	&maschine_jam_outputs_smartstrip_led_1x5_group,
-	&maschine_jam_outputs_smartstrip_led_1x6_group,
-	&maschine_jam_outputs_smartstrip_led_1x7_group,
-	&maschine_jam_outputs_smartstrip_led_1x8_group,
-	&maschine_jam_outputs_smartstrip_led_1x9_group,
+	&maschine_jam_outputs_smartstrip_led_1x01_group,
+	&maschine_jam_outputs_smartstrip_led_1x02_group,
+	&maschine_jam_outputs_smartstrip_led_1x03_group,
+	&maschine_jam_outputs_smartstrip_led_1x04_group,
+	&maschine_jam_outputs_smartstrip_led_1x05_group,
+	&maschine_jam_outputs_smartstrip_led_1x06_group,
+	&maschine_jam_outputs_smartstrip_led_1x07_group,
+	&maschine_jam_outputs_smartstrip_led_1x08_group,
+	&maschine_jam_outputs_smartstrip_led_1x09_group,
 	&maschine_jam_outputs_smartstrip_led_1x10_group,
 	&maschine_jam_outputs_smartstrip_led_1x11_group,
-	&maschine_jam_outputs_smartstrip_led_2x1_group,
-	&maschine_jam_outputs_smartstrip_led_2x2_group,
-	&maschine_jam_outputs_smartstrip_led_2x3_group,
-	&maschine_jam_outputs_smartstrip_led_2x4_group,
-	&maschine_jam_outputs_smartstrip_led_2x5_group,
-	&maschine_jam_outputs_smartstrip_led_2x6_group,
-	&maschine_jam_outputs_smartstrip_led_2x7_group,
-	&maschine_jam_outputs_smartstrip_led_2x8_group,
-	&maschine_jam_outputs_smartstrip_led_2x9_group,
+	&maschine_jam_outputs_smartstrip_led_2x01_group,
+	&maschine_jam_outputs_smartstrip_led_2x02_group,
+	&maschine_jam_outputs_smartstrip_led_2x03_group,
+	&maschine_jam_outputs_smartstrip_led_2x04_group,
+	&maschine_jam_outputs_smartstrip_led_2x05_group,
+	&maschine_jam_outputs_smartstrip_led_2x06_group,
+	&maschine_jam_outputs_smartstrip_led_2x07_group,
+	&maschine_jam_outputs_smartstrip_led_2x08_group,
+	&maschine_jam_outputs_smartstrip_led_2x09_group,
 	&maschine_jam_outputs_smartstrip_led_2x10_group,
 	&maschine_jam_outputs_smartstrip_led_2x11_group,
-	&maschine_jam_outputs_smartstrip_led_3x1_group,
-	&maschine_jam_outputs_smartstrip_led_3x2_group,
-	&maschine_jam_outputs_smartstrip_led_3x3_group,
-	&maschine_jam_outputs_smartstrip_led_3x4_group,
-	&maschine_jam_outputs_smartstrip_led_3x5_group,
-	&maschine_jam_outputs_smartstrip_led_3x6_group,
-	&maschine_jam_outputs_smartstrip_led_3x7_group,
-	&maschine_jam_outputs_smartstrip_led_3x8_group,
-	&maschine_jam_outputs_smartstrip_led_3x9_group,
+	&maschine_jam_outputs_smartstrip_led_3x01_group,
+	&maschine_jam_outputs_smartstrip_led_3x02_group,
+	&maschine_jam_outputs_smartstrip_led_3x03_group,
+	&maschine_jam_outputs_smartstrip_led_3x04_group,
+	&maschine_jam_outputs_smartstrip_led_3x05_group,
+	&maschine_jam_outputs_smartstrip_led_3x06_group,
+	&maschine_jam_outputs_smartstrip_led_3x07_group,
+	&maschine_jam_outputs_smartstrip_led_3x08_group,
+	&maschine_jam_outputs_smartstrip_led_3x09_group,
 	&maschine_jam_outputs_smartstrip_led_3x10_group,
 	&maschine_jam_outputs_smartstrip_led_3x11_group,
-	&maschine_jam_outputs_smartstrip_led_4x1_group,
-	&maschine_jam_outputs_smartstrip_led_4x2_group,
-	&maschine_jam_outputs_smartstrip_led_4x3_group,
-	&maschine_jam_outputs_smartstrip_led_4x4_group,
-	&maschine_jam_outputs_smartstrip_led_4x5_group,
-	&maschine_jam_outputs_smartstrip_led_4x6_group,
-	&maschine_jam_outputs_smartstrip_led_4x7_group,
-	&maschine_jam_outputs_smartstrip_led_4x8_group,
-	&maschine_jam_outputs_smartstrip_led_4x9_group,
+	&maschine_jam_outputs_smartstrip_led_4x01_group,
+	&maschine_jam_outputs_smartstrip_led_4x02_group,
+	&maschine_jam_outputs_smartstrip_led_4x03_group,
+	&maschine_jam_outputs_smartstrip_led_4x04_group,
+	&maschine_jam_outputs_smartstrip_led_4x05_group,
+	&maschine_jam_outputs_smartstrip_led_4x06_group,
+	&maschine_jam_outputs_smartstrip_led_4x07_group,
+	&maschine_jam_outputs_smartstrip_led_4x08_group,
+	&maschine_jam_outputs_smartstrip_led_4x09_group,
 	&maschine_jam_outputs_smartstrip_led_4x10_group,
 	&maschine_jam_outputs_smartstrip_led_4x11_group,
-	&maschine_jam_outputs_smartstrip_led_5x1_group,
-	&maschine_jam_outputs_smartstrip_led_5x2_group,
-	&maschine_jam_outputs_smartstrip_led_5x3_group,
-	&maschine_jam_outputs_smartstrip_led_5x4_group,
-	&maschine_jam_outputs_smartstrip_led_5x5_group,
-	&maschine_jam_outputs_smartstrip_led_5x6_group,
-	&maschine_jam_outputs_smartstrip_led_5x7_group,
-	&maschine_jam_outputs_smartstrip_led_5x8_group,
-	&maschine_jam_outputs_smartstrip_led_5x9_group,
+	&maschine_jam_outputs_smartstrip_led_5x01_group,
+	&maschine_jam_outputs_smartstrip_led_5x02_group,
+	&maschine_jam_outputs_smartstrip_led_5x03_group,
+	&maschine_jam_outputs_smartstrip_led_5x04_group,
+	&maschine_jam_outputs_smartstrip_led_5x05_group,
+	&maschine_jam_outputs_smartstrip_led_5x06_group,
+	&maschine_jam_outputs_smartstrip_led_5x07_group,
+	&maschine_jam_outputs_smartstrip_led_5x08_group,
+	&maschine_jam_outputs_smartstrip_led_5x09_group,
 	&maschine_jam_outputs_smartstrip_led_5x10_group,
 	&maschine_jam_outputs_smartstrip_led_5x11_group,
-	&maschine_jam_outputs_smartstrip_led_6x1_group,
-	&maschine_jam_outputs_smartstrip_led_6x2_group,
-	&maschine_jam_outputs_smartstrip_led_6x3_group,
-	&maschine_jam_outputs_smartstrip_led_6x4_group,
-	&maschine_jam_outputs_smartstrip_led_6x5_group,
-	&maschine_jam_outputs_smartstrip_led_6x6_group,
-	&maschine_jam_outputs_smartstrip_led_6x7_group,
-	&maschine_jam_outputs_smartstrip_led_6x8_group,
-	&maschine_jam_outputs_smartstrip_led_6x9_group,
+	&maschine_jam_outputs_smartstrip_led_6x01_group,
+	&maschine_jam_outputs_smartstrip_led_6x02_group,
+	&maschine_jam_outputs_smartstrip_led_6x03_group,
+	&maschine_jam_outputs_smartstrip_led_6x04_group,
+	&maschine_jam_outputs_smartstrip_led_6x05_group,
+	&maschine_jam_outputs_smartstrip_led_6x06_group,
+	&maschine_jam_outputs_smartstrip_led_6x07_group,
+	&maschine_jam_outputs_smartstrip_led_6x08_group,
+	&maschine_jam_outputs_smartstrip_led_6x09_group,
 	&maschine_jam_outputs_smartstrip_led_6x10_group,
 	&maschine_jam_outputs_smartstrip_led_6x11_group,
-	&maschine_jam_outputs_smartstrip_led_7x1_group,
-	&maschine_jam_outputs_smartstrip_led_7x2_group,
-	&maschine_jam_outputs_smartstrip_led_7x3_group,
-	&maschine_jam_outputs_smartstrip_led_7x4_group,
-	&maschine_jam_outputs_smartstrip_led_7x5_group,
-	&maschine_jam_outputs_smartstrip_led_7x6_group,
-	&maschine_jam_outputs_smartstrip_led_7x7_group,
-	&maschine_jam_outputs_smartstrip_led_7x8_group,
-	&maschine_jam_outputs_smartstrip_led_7x9_group,
+	&maschine_jam_outputs_smartstrip_led_7x01_group,
+	&maschine_jam_outputs_smartstrip_led_7x02_group,
+	&maschine_jam_outputs_smartstrip_led_7x03_group,
+	&maschine_jam_outputs_smartstrip_led_7x04_group,
+	&maschine_jam_outputs_smartstrip_led_7x05_group,
+	&maschine_jam_outputs_smartstrip_led_7x06_group,
+	&maschine_jam_outputs_smartstrip_led_7x07_group,
+	&maschine_jam_outputs_smartstrip_led_7x08_group,
+	&maschine_jam_outputs_smartstrip_led_7x09_group,
 	&maschine_jam_outputs_smartstrip_led_7x10_group,
 	&maschine_jam_outputs_smartstrip_led_7x11_group,
-	&maschine_jam_outputs_smartstrip_led_8x1_group,
-	&maschine_jam_outputs_smartstrip_led_8x2_group,
-	&maschine_jam_outputs_smartstrip_led_8x3_group,
-	&maschine_jam_outputs_smartstrip_led_8x4_group,
-	&maschine_jam_outputs_smartstrip_led_8x5_group,
-	&maschine_jam_outputs_smartstrip_led_8x6_group,
-	&maschine_jam_outputs_smartstrip_led_8x7_group,
-	&maschine_jam_outputs_smartstrip_led_8x8_group,
-	&maschine_jam_outputs_smartstrip_led_8x9_group,
+	&maschine_jam_outputs_smartstrip_led_8x01_group,
+	&maschine_jam_outputs_smartstrip_led_8x02_group,
+	&maschine_jam_outputs_smartstrip_led_8x03_group,
+	&maschine_jam_outputs_smartstrip_led_8x04_group,
+	&maschine_jam_outputs_smartstrip_led_8x05_group,
+	&maschine_jam_outputs_smartstrip_led_8x06_group,
+	&maschine_jam_outputs_smartstrip_led_8x07_group,
+	&maschine_jam_outputs_smartstrip_led_8x08_group,
+	&maschine_jam_outputs_smartstrip_led_8x09_group,
 	&maschine_jam_outputs_smartstrip_led_8x10_group,
 	&maschine_jam_outputs_smartstrip_led_8x11_group,
 	NULL
@@ -2243,12 +2243,12 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 				} else if (snd_seq_ev_is_variable_type(&midi_event)){
 					printk(KERN_NOTICE "snd_midi_event_encode: variable event_type\n");
 				} else {
-					printk(KERN_ALERT "snd_midi_event_encode: unknwon event_type:%d", \
+					printk(KERN_ALERT "snd_midi_event_encode: unknwon event_type:%d\n", \
 						midi_event.type
 					);
 				}
 			} else if (sequencer_status < 0){
-				printk(KERN_ALERT "snd_midi_event_encode: sequencer status: %d", sequencer_status);
+				printk(KERN_ALERT "snd_midi_event_encode: sequencer status: %d\n", sequencer_status);
 			}
 		}
 	}else{

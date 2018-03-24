@@ -343,13 +343,13 @@ midi_map_io(){
 		)
 		(cd smartstrips
 			#purely for the purpose of testing!
-			midi_map_io led_1x1 0 control_change 38
+			midi_map_io led_1x01 0 control_change 38
 			midi_map_io led_1x11 0 control_change 39
-			midi_map_io led_4x1 0 note 82
+			midi_map_io led_4x01 0 note 82
 			midi_map_io led_4x11 0 note 83
-			midi_map_io led_5x4 0 note 84
-			midi_map_io led_5x6 0 note 85
-			midi_map_io led_8x1 0 control_change 8
+			midi_map_io led_5x04 0 note 84
+			midi_map_io led_5x06 0 note 85
+			midi_map_io led_8x01 0 control_change 8
 			midi_map_io led_8x11 0 control_change 9
 		)
 	)
