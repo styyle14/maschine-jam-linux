@@ -52,7 +52,8 @@ enum maschine_jam_midi_type{
 
 #define MASCHINE_JAM_NUMBER_BUTTON_LEDS 53
 #define MASCHINE_JAM_NUMBER_PAD_LEDS 80
-#define MASCHINE_JAM_NUMBER_SMARTSTRIP_LEDS 88
+#define MASCHINE_JAM_NUMBER_LEDS_PER_SMARTSTRIP 11
+#define MASCHINE_JAM_NUMBER_SMARTSTRIP_LEDS (MASCHINE_JAM_NUMBER_SMARTSTRIPS * MASCHINE_JAM_NUMBER_LEDS_PER_SMARTSTRIP)
 
 struct maschine_jam_midi_config {
 	enum maschine_jam_midi_type type;
@@ -88,6 +89,18 @@ struct maschine_jam_output_node {
 	};
 };
 
+enum maschine_jam_smartstrip_display_mode{
+	MJ_SMARTSTRIP_DISPLAY_MODE_SINGLE = 0x00,
+	MJ_SMARTSTRIP_DISPLAY_MODE_DOT = 0x01,
+	MJ_SMARTSTRIP_DISPLAY_MODE_PAN = 0x02,
+	MJ_SMARTSTRIP_DISPLAY_MODE_DUAL = 0x03,
+};
+struct maschine_jam_smartstrip_display_state {
+	enum maschine_jam_smartstrip_display_mode mode;
+	uint8_t color;
+	uint8_t value;
+};
+
 struct maschine_jam_driver_data {
 	// Device Information
 	struct hid_device 		*mj_hid_device;
@@ -113,7 +126,8 @@ struct maschine_jam_driver_data {
 	uint8_t					hid_report_led_pads[MASCHINE_JAM_NUMBER_PAD_LEDS];
 	spinlock_t				hid_report_led_pads_lock;
 	struct work_struct		hid_report_led_pads_work;
-	uint8_t					hid_report_led_strips[MASCHINE_JAM_NUMBER_SMARTSTRIP_LEDS];
+	uint8_t					hid_report_led_smartstrips[MASCHINE_JAM_NUMBER_SMARTSTRIP_LEDS];
+	struct maschine_jam_smartstrip_display_state hid_report_led_smartstrips_display_states[MASCHINE_JAM_NUMBER_SMARTSTRIPS];
 	spinlock_t				hid_report_led_smartstrips_lock;
 	struct work_struct		hid_report_led_smartstrips_work;
 
@@ -123,8 +137,9 @@ struct maschine_jam_driver_data {
 	struct kobject *directory_inputs_buttons;
 	struct kobject *directory_inputs_smartstrips;
 	struct kobject *directory_outputs;
-	struct kobject *directory_outputs_buttons;
-	struct kobject *directory_outputs_smartstrips;
+	struct kobject *directory_outputs_button_leds;
+	struct kobject *directory_outputs_pad_leds;
+	struct kobject *directory_outputs_smartstrip_leds;
 
 	// Sound/Midi Interface
 	struct snd_card			*sound_card;
@@ -232,7 +247,7 @@ static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data 
 	memset(driver_data->hid_report_led_pads, 0, sizeof(driver_data->hid_report_led_pads));
 	spin_lock_init(&driver_data->hid_report_led_pads_lock);
 	INIT_WORK(&driver_data->hid_report_led_pads_work, maschine_jam_hid_write_led_pads_report);
-	memset(driver_data->hid_report_led_strips, 0, sizeof(driver_data->hid_report_led_strips));
+	memset(driver_data->hid_report_led_smartstrips, 0, sizeof(driver_data->hid_report_led_smartstrips));
 	spin_lock_init(&driver_data->hid_report_led_smartstrips_lock);
 	INIT_WORK(&driver_data->hid_report_led_smartstrips_work, maschine_jam_hid_write_led_smartstrips_report);
 
@@ -242,8 +257,9 @@ static void maschine_jam_initialize_driver_data(struct maschine_jam_driver_data 
 	driver_data->directory_inputs_buttons = NULL;
 	driver_data->directory_inputs_smartstrips = NULL;
 	driver_data->directory_outputs = NULL;
-	driver_data->directory_outputs_buttons = NULL;
-	driver_data->directory_outputs_smartstrips = NULL;
+	driver_data->directory_outputs_button_leds = NULL;
+	driver_data->directory_outputs_pad_leds = NULL;
+	driver_data->directory_outputs_smartstrip_leds = NULL;
 
 	// Sound/Midi Interface
 	driver_data->sound_card = NULL;
@@ -424,7 +440,7 @@ static void maschine_jam_hid_write_led_smartstrips_report(struct work_struct *wo
 	buffer = kzalloc(MASCHINE_JAM_HID_REPORT_ID_BYTES + MASCHINE_JAM_NUMBER_SMARTSTRIP_LEDS, GFP_KERNEL);
 	buffer[0] = 0x82;
 	spin_lock(&driver_data->hid_report_led_smartstrips_lock);
-	memcpy(&buffer[MASCHINE_JAM_HID_REPORT_ID_BYTES], &driver_data->hid_report_led_strips, MASCHINE_JAM_NUMBER_SMARTSTRIP_LEDS);
+	memcpy(&buffer[MASCHINE_JAM_HID_REPORT_ID_BYTES], &driver_data->hid_report_led_smartstrips, MASCHINE_JAM_NUMBER_SMARTSTRIP_LEDS);
 	spin_unlock(&driver_data->hid_report_led_smartstrips_lock);
 	ret = hid_hw_output_report(driver_data->mj_hid_device, buffer, MASCHINE_JAM_HID_REPORT_ID_BYTES + MASCHINE_JAM_NUMBER_SMARTSTRIP_LEDS);
 	//printk(KERN_NOTICE "maschine_jam_hid_write_report() - 0x82, ret=%d", ret);
@@ -686,12 +702,15 @@ static int maschine_jam_raw_event(struct hid_device *mj_hid_device, struct hid_r
 }
 
 enum maschine_jam_io_attribute_type {
-	IO_ATTRIBUTE_KNOB,
-	IO_ATTRIBUTE_BUTTON,
-	IO_ATTRIBUTE_SMARTSTRIP,
-	IO_ATTRIBUTE_LED_BUTTON,
-	IO_ATTRIBUTE_LED_PAD,
-	IO_ATTRIBUTE_LED_SMARTSTRIP,
+	IO_ATTRIBUTE_INPUT_KNOB,
+	IO_ATTRIBUTE_INPUT_BUTTON,
+	IO_ATTRIBUTE_INPUT_SMARTSTRIP,
+	IO_ATTRIBUTE_OUTPUT_BUTTON_LED,
+	IO_ATTRIBUTE_OUTPUT_PAD_LED,
+	IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_LED,
+	IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_MODE,
+	IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_COLOR,
+	IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_VALUE,
 };
 struct maschine_jam_io_attribute {
 	struct kobj_attribute type_attribute;
@@ -713,11 +732,11 @@ static ssize_t maschine_jam_inputs_type_show(struct kobject *kobj, struct kobj_a
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, type_attribute);
 	enum maschine_jam_midi_type midi_type;
 
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_KNOB){
 		midi_type = driver_data->midi_in_knob_configs[io_attribute->io_index].type;
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_BUTTON){
 		midi_type = driver_data->midi_in_button_configs[io_attribute->io_index].type;
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_SMARTSTRIP){
 		midi_type = driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].type;
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
@@ -753,11 +772,11 @@ static ssize_t maschine_jam_inputs_type_store(struct kobject *kobj, struct kobj_
 		printk(KERN_ALERT "maschine_jam_inputs_type_store - invalid type\n");
 		return count;
 	}
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_KNOB){
 		driver_data->midi_in_knob_configs[io_attribute->io_index].type = midi_type;
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_BUTTON){
 		driver_data->midi_in_button_configs[io_attribute->io_index].type = midi_type;
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_SMARTSTRIP){
 		driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].type = midi_type;
 	}
 	return count;
@@ -771,11 +790,11 @@ static ssize_t maschine_jam_inputs_channel_show(struct kobject *kobj, struct kob
 	struct maschine_jam_driver_data *driver_data = hid_get_drvdata(hdev);
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, channel_attribute);
 
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_KNOB){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", driver_data->midi_in_knob_configs[io_attribute->io_index].channel);
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_BUTTON){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", driver_data->midi_in_button_configs[io_attribute->io_index].channel);
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_SMARTSTRIP){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].channel);
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
@@ -792,11 +811,11 @@ static ssize_t maschine_jam_inputs_channel_store(struct kobject *kobj, struct ko
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, channel_attribute);
 
 	sscanf(buf, "%u", &store_value);
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_KNOB){
 		driver_data->midi_in_knob_configs[io_attribute->io_index].channel = store_value & 0xF;
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_BUTTON){
 		driver_data->midi_in_button_configs[io_attribute->io_index].channel = store_value & 0xF;
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_SMARTSTRIP){
 		driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].channel = store_value & 0xF;
 	}
 	return count;
@@ -810,11 +829,11 @@ static ssize_t maschine_jam_inputs_key_show(struct kobject *kobj, struct kobj_at
 	struct maschine_jam_driver_data *driver_data = hid_get_drvdata(hdev);
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, key_attribute);
 
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_KNOB){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", driver_data->midi_in_knob_configs[io_attribute->io_index].key);
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_BUTTON){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", driver_data->midi_in_button_configs[io_attribute->io_index].key);
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_SMARTSTRIP){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].key);
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
@@ -831,11 +850,11 @@ static ssize_t maschine_jam_inputs_key_store(struct kobject *kobj, struct kobj_a
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, key_attribute);
 
 	sscanf(buf, "%u", &store_value);
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_KNOB){
 		driver_data->midi_in_knob_configs[io_attribute->io_index].key = store_value & 0x7F;
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_BUTTON){
 		driver_data->midi_in_button_configs[io_attribute->io_index].key = store_value & 0x7F;
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_SMARTSTRIP){
 		driver_data->midi_in_smartstrip_configs[io_attribute->io_index][io_attribute->smartstrip_finger][io_attribute->smartstrip_finger_mode].key = store_value & 0x7F;
 	}
 	return count;
@@ -849,11 +868,11 @@ static ssize_t maschine_jam_inputs_status_show(struct kobject *kobj, struct kobj
 	struct maschine_jam_driver_data *driver_data = hid_get_drvdata(hdev);
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, status_attribute);
 
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_KNOB){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_knob_nibble(driver_data->hid_report01_data_knobs, io_attribute->io_index));
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_BUTTON){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_button_bit(driver_data->hid_report01_data_buttons, io_attribute->io_index));
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_SMARTSTRIP){
 		return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_smartstrip(driver_data->hid_report02_data_smartstrips, io_attribute->io_index/2).touch_value[io_attribute->io_index % 2]);
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "unknown attribute type\n");
@@ -870,15 +889,15 @@ static ssize_t maschine_jam_inputs_status_store(struct kobject *kobj, struct kob
 	struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, status_attribute);
 
 	sscanf(buf, "%u", &store_value);
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_KNOB){
 		maschine_jam_set_knob_nibble(driver_data->hid_report01_data_knobs, io_attribute->io_index, store_value & 0x0F);
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_BUTTON){
 		if (store_value == 0){
 			maschine_jam_clear_button_bit(driver_data->hid_report01_data_buttons, io_attribute->io_index);
 		} else {
 			maschine_jam_set_button_bit(driver_data->hid_report01_data_buttons, io_attribute->io_index);
 		}
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_SMARTSTRIP){
 		maschine_jam_set_smartstrip_touch_value(driver_data->hid_report02_data_smartstrips, io_attribute->io_index/2, io_attribute->io_index%2, store_value & 0x03FF);
 	}
 	return count;
@@ -905,7 +924,7 @@ static ssize_t maschine_jam_inputs_status_store(struct kobject *kobj, struct kob
 			.show = maschine_jam_inputs_status_show, \
 			.store = maschine_jam_inputs_status_store, \
 		}, \
-		.io_attribute_type = IO_ATTRIBUTE_KNOB, \
+		.io_attribute_type = IO_ATTRIBUTE_INPUT_KNOB, \
 		.io_index = _index, \
 		.smartstrip_finger = 0, \
 		.smartstrip_finger_mode = 0, \
@@ -950,7 +969,7 @@ static const struct attribute_group *maschine_jam_inputs_knobs_groups[] = {
 			.show = maschine_jam_inputs_status_show, \
 			.store = maschine_jam_inputs_status_store, \
 		}, \
-		.io_attribute_type = IO_ATTRIBUTE_BUTTON, \
+		.io_attribute_type = IO_ATTRIBUTE_INPUT_BUTTON, \
 		.io_index = _index, \
 		.smartstrip_finger = 0, \
 		.smartstrip_finger_mode = 0, \
@@ -1232,7 +1251,7 @@ static const struct attribute_group *maschine_jam_inputs_buttons_groups[] = {
 			.show = maschine_jam_inputs_status_show, \
 			.store = maschine_jam_inputs_status_store, \
 		}, \
-		.io_attribute_type = IO_ATTRIBUTE_SMARTSTRIP, \
+		.io_attribute_type = IO_ATTRIBUTE_INPUT_SMARTSTRIP, \
 		.io_index = _index, \
 		.smartstrip_finger = _smartstrip_finger, \
 		.smartstrip_finger_mode = _smartstrip_finger_mode, \
@@ -1327,11 +1346,11 @@ static ssize_t maschine_jam_outputs_type_show(struct kobject *kobj, struct kobj_
 	struct maschine_jam_output_node* output_node;
 	struct snd_seq_event midi_event;
 
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_BUTTON_LED){
 		output_node = &driver_data->midi_out_button_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_PAD_LED){
 		output_node = &driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_SMARTSTRIP) {
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_LED) {
 		output_node = &driver_data->midi_out_smartstrip_led_nodes[io_attribute->io_index];
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_type_show: invalid io_attribute_type\n");
@@ -1369,11 +1388,11 @@ static ssize_t maschine_jam_outputs_type_store(struct kobject *kobj, struct kobj
 		printk(KERN_ALERT "maschine_jam_outputs_type_store - invalid input_type\n");
 		return count;
 	}
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_BUTTON_LED){
 		output_node = &driver_data->midi_out_button_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_PAD_LED){
 		output_node = &driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_SMARTSTRIP) {
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_LED) {
 		output_node = &driver_data->midi_out_smartstrip_led_nodes[io_attribute->io_index];
 	} else {
 		printk(KERN_ALERT "maschine_jam_outputs_channel_store: invalid io_attribute_type\n");
@@ -1406,11 +1425,11 @@ static ssize_t maschine_jam_outputs_channel_show(struct kobject *kobj, struct ko
 	struct maschine_jam_output_node* output_node;
 	struct snd_seq_event midi_event;
 
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_BUTTON_LED){
 		output_node = &driver_data->midi_out_button_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_PAD_LED){
 		output_node = &driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_SMARTSTRIP) {
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_LED) {
 		output_node = &driver_data->midi_out_smartstrip_led_nodes[io_attribute->io_index];
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_channel_show: invalid io_attribute_type\n");
@@ -1434,11 +1453,11 @@ static ssize_t maschine_jam_outputs_channel_store(struct kobject *kobj, struct k
 	uint8_t channel;
 
 	sscanf(buf, "%u", &store_value);
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_BUTTON_LED){
 		output_node = &driver_data->midi_out_button_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_PAD_LED){
 		output_node = &driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_SMARTSTRIP) {
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_LED) {
 		output_node = &driver_data->midi_out_smartstrip_led_nodes[io_attribute->io_index];
 	} else {
 		printk(KERN_ALERT "maschine_jam_outputs_channel_store: invalid io_attribute_type\n");
@@ -1468,11 +1487,11 @@ static ssize_t maschine_jam_outputs_key_show(struct kobject *kobj, struct kobj_a
 	struct maschine_jam_output_node* output_node;
 	struct snd_seq_event midi_event;
 
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_BUTTON_LED){
 		output_node = &driver_data->midi_out_button_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_PAD_LED){
 		output_node = &driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_SMARTSTRIP) {
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_LED) {
 		output_node = &driver_data->midi_out_smartstrip_led_nodes[io_attribute->io_index];
 	} else {
 		return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_key_show: invalid io_attribute_type\n");
@@ -1496,11 +1515,11 @@ static ssize_t maschine_jam_outputs_key_store(struct kobject *kobj, struct kobj_
 	uint8_t key;
 
 	sscanf(buf, "%u", &store_value);
-	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_BUTTON){
+	if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_BUTTON_LED){
 		output_node = &driver_data->midi_out_button_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_PAD){
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_PAD_LED){
 		output_node = &driver_data->midi_out_pad_led_nodes[io_attribute->io_index];
-	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_LED_SMARTSTRIP) {
+	} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_LED) {
 		output_node = &driver_data->midi_out_smartstrip_led_nodes[io_attribute->io_index];
 	} else {
 		printk(KERN_ALERT "maschine_jam_outputs_key_store: invalid io_attribute_type\n");
@@ -1528,11 +1547,11 @@ static ssize_t maschine_jam_outputs_status_show(struct kobject *kobj, struct kob
 	//struct maschine_jam_driver_data *driver_data = hid_get_drvdata(hdev);
 	//struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, status_attribute);
 
-	//if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+	//if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_KNOB){
 		//return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_knob_nibble(driver_data->hid_report01_data_knobs, io_attribute->io_index));
-	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_BUTTON){
 		//return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_button_bit(driver_data->hid_report01_data_buttons, io_attribute->io_index));
-	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_SMARTSTRIP){
 		//return scnprintf(buf, PAGE_SIZE, "%d\n", maschine_jam_get_smartstrip(driver_data->hid_report02_data_smartstrips, io_attribute->io_index/2).touch_value[io_attribute->io_index % 2]);
 	//} else {
 		//return scnprintf(buf, PAGE_SIZE, "maschine_jam_outputs_status_show: unknown attribute type\n");
@@ -1550,23 +1569,23 @@ static ssize_t maschine_jam_outputs_status_store(struct kobject *kobj, struct ko
 	//struct maschine_jam_io_attribute *io_attribute = container_of(attr, struct maschine_jam_io_attribute, status_attribute);
 
 	//sscanf(buf, "%u", &store_value);
-	//if (io_attribute->io_attribute_type == IO_ATTRIBUTE_KNOB){
+	//if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_KNOB){
 		//maschine_jam_set_knob_nibble(driver_data->hid_report01_data_knobs, io_attribute->io_index, store_value & 0x0F);
-	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_BUTTON){
+	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_BUTTON){
 		//if (store_value == 0){
 			//maschine_jam_clear_button_bit(driver_data->hid_report01_data_buttons, io_attribute->io_index);
 		//} else {
 			//maschine_jam_set_button_bit(driver_data->hid_report01_data_buttons, io_attribute->io_index);
 		//}
-	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_SMARTSTRIP){
+	//} else if (io_attribute->io_attribute_type == IO_ATTRIBUTE_INPUT_SMARTSTRIP){
 		//maschine_jam_set_smartstrip_touch_value(driver_data->hid_report02_data_smartstrips, io_attribute->io_index/2, io_attribute->io_index%2, store_value & 0x03FF);
 	//}
 	//printk(KERN_ALERT "maschine_jam_outputs_status_store - invalid type\n");
 	printk(KERN_ALERT "maschine_jam_outputs_status_store - unimplemented\n");
 	return count;
 }
-#define MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(_name, _io_attribute_type, _index) \
-	struct maschine_jam_io_attribute maschine_jam_outputs_button_ ## _name ## _attribute = { \
+#define MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(_name, _index) \
+	struct maschine_jam_io_attribute maschine_jam_outputs_button_led_ ## _name ## _attribute = { \
 		.type_attribute = { \
 			.attr = {.name = "type", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
 			.show = maschine_jam_outputs_type_show, \
@@ -1587,295 +1606,135 @@ static ssize_t maschine_jam_outputs_status_store(struct kobject *kobj, struct ko
 			.show = maschine_jam_outputs_status_show, \
 			.store = maschine_jam_outputs_status_store, \
 		}, \
-		.io_attribute_type = _io_attribute_type, \
+		.io_attribute_type = IO_ATTRIBUTE_OUTPUT_BUTTON_LED, \
 		.io_index = _index, \
 		.smartstrip_finger = 0, \
 		.smartstrip_finger_mode = 0, \
 	}; \
-	static struct attribute *maschine_jam_outputs_button_ ## _name ## _attributes[] = { \
-		&maschine_jam_outputs_button_ ## _name ## _attribute.type_attribute.attr, \
-		&maschine_jam_outputs_button_ ## _name ## _attribute.channel_attribute.attr, \
-		&maschine_jam_outputs_button_ ## _name ## _attribute.key_attribute.attr, \
-		&maschine_jam_outputs_button_ ## _name ## _attribute.status_attribute.attr, \
+	static struct attribute *maschine_jam_outputs_button_led_ ## _name ## _attributes[] = { \
+		&maschine_jam_outputs_button_led_ ## _name ## _attribute.type_attribute.attr, \
+		&maschine_jam_outputs_button_led_ ## _name ## _attribute.channel_attribute.attr, \
+		&maschine_jam_outputs_button_led_ ## _name ## _attribute.key_attribute.attr, \
+		&maschine_jam_outputs_button_led_ ## _name ## _attribute.status_attribute.attr, \
 		NULL \
 	}; \
-	static const struct attribute_group maschine_jam_outputs_button_ ## _name ## _group = { \
+	static const struct attribute_group maschine_jam_outputs_button_led_ ## _name ## _group = { \
 		.name = #_name, \
-		.attrs = maschine_jam_outputs_button_ ## _name ## _attributes, \
+		.attrs = maschine_jam_outputs_button_led_ ## _name ## _attributes, \
 	}
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(song, IO_ATTRIBUTE_LED_BUTTON, 0);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(step, IO_ATTRIBUTE_LED_BUTTON, 1);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(pad_mode, IO_ATTRIBUTE_LED_BUTTON, 2);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(clear, IO_ATTRIBUTE_LED_BUTTON, 3);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(duplicate, IO_ATTRIBUTE_LED_BUTTON, 4);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(navigate_up, IO_ATTRIBUTE_LED_BUTTON, 5);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(navigate_left, IO_ATTRIBUTE_LED_BUTTON, 6);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(navigate_right, IO_ATTRIBUTE_LED_BUTTON, 7);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(navigate_down, IO_ATTRIBUTE_LED_BUTTON, 8);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(note_repeat, IO_ATTRIBUTE_LED_BUTTON, 9);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(mst, IO_ATTRIBUTE_LED_BUTTON, 10);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(grp, IO_ATTRIBUTE_LED_BUTTON, 11);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(in_1, IO_ATTRIBUTE_LED_BUTTON, 12);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(unknown_1, IO_ATTRIBUTE_LED_BUTTON, 13);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(cue, IO_ATTRIBUTE_LED_BUTTON, 14);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(unknown_2, IO_ATTRIBUTE_LED_BUTTON, 15);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(browse, IO_ATTRIBUTE_LED_BUTTON, 16);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(macro, IO_ATTRIBUTE_LED_BUTTON, 17);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level, IO_ATTRIBUTE_LED_BUTTON, 18);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(aux, IO_ATTRIBUTE_LED_BUTTON, 19);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(control, IO_ATTRIBUTE_LED_BUTTON, 20);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(auto, IO_ATTRIBUTE_LED_BUTTON, 21);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(perform, IO_ATTRIBUTE_LED_BUTTON, 22);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(notes, IO_ATTRIBUTE_LED_BUTTON, 23);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(lock, IO_ATTRIBUTE_LED_BUTTON, 24);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(tune, IO_ATTRIBUTE_LED_BUTTON, 25);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(swing, IO_ATTRIBUTE_LED_BUTTON, 26);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(shift, IO_ATTRIBUTE_LED_BUTTON, 27);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(play, IO_ATTRIBUTE_LED_BUTTON, 28);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(rec, IO_ATTRIBUTE_LED_BUTTON, 29);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(page_left, IO_ATTRIBUTE_LED_BUTTON, 30);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(page_right, IO_ATTRIBUTE_LED_BUTTON, 31);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(tempo, IO_ATTRIBUTE_LED_BUTTON, 32);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(grid, IO_ATTRIBUTE_LED_BUTTON, 33);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(solo, IO_ATTRIBUTE_LED_BUTTON, 34);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(mute, IO_ATTRIBUTE_LED_BUTTON, 35);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(select, IO_ATTRIBUTE_LED_BUTTON, 36);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_left_1, IO_ATTRIBUTE_LED_BUTTON, 37);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_left_2, IO_ATTRIBUTE_LED_BUTTON, 38);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_left_3, IO_ATTRIBUTE_LED_BUTTON, 39);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_left_4, IO_ATTRIBUTE_LED_BUTTON, 40);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_left_5, IO_ATTRIBUTE_LED_BUTTON, 41);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_left_6, IO_ATTRIBUTE_LED_BUTTON, 42);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_left_7, IO_ATTRIBUTE_LED_BUTTON, 43);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_left_8, IO_ATTRIBUTE_LED_BUTTON, 44);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_right_1, IO_ATTRIBUTE_LED_BUTTON, 45);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_right_2, IO_ATTRIBUTE_LED_BUTTON, 46);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_right_3, IO_ATTRIBUTE_LED_BUTTON, 47);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_right_4, IO_ATTRIBUTE_LED_BUTTON, 48);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_right_5, IO_ATTRIBUTE_LED_BUTTON, 49);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_right_6, IO_ATTRIBUTE_LED_BUTTON, 40);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_right_7, IO_ATTRIBUTE_LED_BUTTON, 51);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(level_right_8, IO_ATTRIBUTE_LED_BUTTON, 52);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(scene_1, IO_ATTRIBUTE_LED_PAD, 0);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(scene_2, IO_ATTRIBUTE_LED_PAD, 1);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(scene_3, IO_ATTRIBUTE_LED_PAD, 2);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(scene_4, IO_ATTRIBUTE_LED_PAD, 3);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(scene_5, IO_ATTRIBUTE_LED_PAD, 4);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(scene_6, IO_ATTRIBUTE_LED_PAD, 5);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(scene_7, IO_ATTRIBUTE_LED_PAD, 6);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(scene_8, IO_ATTRIBUTE_LED_PAD, 7);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x1, IO_ATTRIBUTE_LED_PAD, 8);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x2, IO_ATTRIBUTE_LED_PAD, 9);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x3, IO_ATTRIBUTE_LED_PAD, 10);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x4, IO_ATTRIBUTE_LED_PAD, 11);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x5, IO_ATTRIBUTE_LED_PAD, 12);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x6, IO_ATTRIBUTE_LED_PAD, 13);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x7, IO_ATTRIBUTE_LED_PAD, 14);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_1x8, IO_ATTRIBUTE_LED_PAD, 15);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x1, IO_ATTRIBUTE_LED_PAD, 16);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x2, IO_ATTRIBUTE_LED_PAD, 17);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x3, IO_ATTRIBUTE_LED_PAD, 18);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x4, IO_ATTRIBUTE_LED_PAD, 19);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x5, IO_ATTRIBUTE_LED_PAD, 20);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x6, IO_ATTRIBUTE_LED_PAD, 21);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x7, IO_ATTRIBUTE_LED_PAD, 22);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_2x8, IO_ATTRIBUTE_LED_PAD, 23);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x1, IO_ATTRIBUTE_LED_PAD, 24);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x2, IO_ATTRIBUTE_LED_PAD, 25);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x3, IO_ATTRIBUTE_LED_PAD, 26);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x4, IO_ATTRIBUTE_LED_PAD, 27);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x5, IO_ATTRIBUTE_LED_PAD, 28);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x6, IO_ATTRIBUTE_LED_PAD, 29);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x7, IO_ATTRIBUTE_LED_PAD, 30);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_3x8, IO_ATTRIBUTE_LED_PAD, 31);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x1, IO_ATTRIBUTE_LED_PAD, 32);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x2, IO_ATTRIBUTE_LED_PAD, 33);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x3, IO_ATTRIBUTE_LED_PAD, 34);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x4, IO_ATTRIBUTE_LED_PAD, 35);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x5, IO_ATTRIBUTE_LED_PAD, 36);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x6, IO_ATTRIBUTE_LED_PAD, 37);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x7, IO_ATTRIBUTE_LED_PAD, 38);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_4x8, IO_ATTRIBUTE_LED_PAD, 39);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x1, IO_ATTRIBUTE_LED_PAD, 40);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x2, IO_ATTRIBUTE_LED_PAD, 41);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x3, IO_ATTRIBUTE_LED_PAD, 42);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x4, IO_ATTRIBUTE_LED_PAD, 43);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x5, IO_ATTRIBUTE_LED_PAD, 44);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x6, IO_ATTRIBUTE_LED_PAD, 45);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x7, IO_ATTRIBUTE_LED_PAD, 46);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_5x8, IO_ATTRIBUTE_LED_PAD, 47);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x1, IO_ATTRIBUTE_LED_PAD, 48);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x2, IO_ATTRIBUTE_LED_PAD, 49);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x3, IO_ATTRIBUTE_LED_PAD, 50);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x4, IO_ATTRIBUTE_LED_PAD, 51);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x5, IO_ATTRIBUTE_LED_PAD, 52);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x6, IO_ATTRIBUTE_LED_PAD, 53);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x7, IO_ATTRIBUTE_LED_PAD, 54);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_6x8, IO_ATTRIBUTE_LED_PAD, 55);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x1, IO_ATTRIBUTE_LED_PAD, 56);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x2, IO_ATTRIBUTE_LED_PAD, 57);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x3, IO_ATTRIBUTE_LED_PAD, 58);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x4, IO_ATTRIBUTE_LED_PAD, 59);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x5, IO_ATTRIBUTE_LED_PAD, 60);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x6, IO_ATTRIBUTE_LED_PAD, 61);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x7, IO_ATTRIBUTE_LED_PAD, 62);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_7x8, IO_ATTRIBUTE_LED_PAD, 63);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x1, IO_ATTRIBUTE_LED_PAD, 64);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x2, IO_ATTRIBUTE_LED_PAD, 65);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x3, IO_ATTRIBUTE_LED_PAD, 66);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x4, IO_ATTRIBUTE_LED_PAD, 67);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x5, IO_ATTRIBUTE_LED_PAD, 68);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x6, IO_ATTRIBUTE_LED_PAD, 69);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x7, IO_ATTRIBUTE_LED_PAD, 70);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(matrix_8x8, IO_ATTRIBUTE_LED_PAD, 71);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(group_a, IO_ATTRIBUTE_LED_PAD, 72);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(group_b, IO_ATTRIBUTE_LED_PAD, 73);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(group_c, IO_ATTRIBUTE_LED_PAD, 74);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(group_d, IO_ATTRIBUTE_LED_PAD, 75);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(group_e, IO_ATTRIBUTE_LED_PAD, 76);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(group_f, IO_ATTRIBUTE_LED_PAD, 77);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(group_g, IO_ATTRIBUTE_LED_PAD, 78);
-MJ_OUTPUTS_BUTTON_ATTRIBUTE_GROUP(group_h, IO_ATTRIBUTE_LED_PAD, 79);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(song, 0);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(step, 1);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(pad_mode, 2);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(clear, 3);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(duplicate, 4);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(navigate_up, 5);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(navigate_left, 6);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(navigate_right, 7);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(navigate_down, 8);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(note_repeat, 9);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(mst, 10);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(grp, 11);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(in_1, 12);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(unknown_1, 13);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(cue, 14);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(unknown_2, 15);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(browse, 16);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(macro, 17);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level, 18);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(aux, 19);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(control, 20);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(auto, 21);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(perform, 22);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(notes, 23);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(lock, 24);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(tune, 25);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(swing, 26);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(shift, 27);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(play, 28);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(rec, 29);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(page_left, 30);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(page_right, 31);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(tempo, 32);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(grid, 33);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(solo, 34);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(mute, 35);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(select, 36);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_left_1, 37);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_left_2, 38);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_left_3, 39);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_left_4, 40);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_left_5, 41);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_left_6, 42);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_left_7, 43);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_left_8, 44);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_right_1, 45);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_right_2, 46);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_right_3, 47);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_right_4, 48);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_right_5, 49);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_right_6, 40);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_right_7, 51);
+MJ_OUTPUTS_BUTTON_LED_ATTRIBUTE_GROUP(level_right_8, 52);
 
-static const struct attribute_group *maschine_jam_outputs_buttons_groups[] = {
-	&maschine_jam_outputs_button_song_group,
-	&maschine_jam_outputs_button_step_group,
-	&maschine_jam_outputs_button_pad_mode_group,
-	&maschine_jam_outputs_button_clear_group,
-	&maschine_jam_outputs_button_duplicate_group,
-	&maschine_jam_outputs_button_navigate_up_group,
-	&maschine_jam_outputs_button_navigate_left_group,
-	&maschine_jam_outputs_button_navigate_right_group,
-	&maschine_jam_outputs_button_navigate_down_group,
-	&maschine_jam_outputs_button_note_repeat_group,
-	&maschine_jam_outputs_button_mst_group,
-	&maschine_jam_outputs_button_grp_group,
-	&maschine_jam_outputs_button_in_1_group,
-	&maschine_jam_outputs_button_unknown_1_group,
-	&maschine_jam_outputs_button_cue_group,
-	&maschine_jam_outputs_button_unknown_2_group,
-	&maschine_jam_outputs_button_browse_group,
-	&maschine_jam_outputs_button_macro_group,
-	&maschine_jam_outputs_button_level_group,
-	&maschine_jam_outputs_button_aux_group,
-	&maschine_jam_outputs_button_control_group,
-	&maschine_jam_outputs_button_auto_group,
-	&maschine_jam_outputs_button_perform_group,
-	&maschine_jam_outputs_button_notes_group,
-	&maschine_jam_outputs_button_lock_group,
-	&maschine_jam_outputs_button_tune_group,
-	&maschine_jam_outputs_button_swing_group,
-	&maschine_jam_outputs_button_shift_group,
-	&maschine_jam_outputs_button_play_group,
-	&maschine_jam_outputs_button_rec_group,
-	&maschine_jam_outputs_button_page_left_group,
-	&maschine_jam_outputs_button_page_right_group,
-	&maschine_jam_outputs_button_tempo_group,
-	&maschine_jam_outputs_button_grid_group,
-	&maschine_jam_outputs_button_solo_group,
-	&maschine_jam_outputs_button_mute_group,
-	&maschine_jam_outputs_button_select_group,
-	&maschine_jam_outputs_button_level_left_1_group,
-	&maschine_jam_outputs_button_level_left_2_group,
-	&maschine_jam_outputs_button_level_left_3_group,
-	&maschine_jam_outputs_button_level_left_4_group,
-	&maschine_jam_outputs_button_level_left_5_group,
-	&maschine_jam_outputs_button_level_left_6_group,
-	&maschine_jam_outputs_button_level_left_7_group,
-	&maschine_jam_outputs_button_level_left_8_group,
-	&maschine_jam_outputs_button_level_right_1_group,
-	&maschine_jam_outputs_button_level_right_2_group,
-	&maschine_jam_outputs_button_level_right_3_group,
-	&maschine_jam_outputs_button_level_right_4_group,
-	&maschine_jam_outputs_button_level_right_5_group,
-	&maschine_jam_outputs_button_level_right_6_group,
-	&maschine_jam_outputs_button_level_right_7_group,
-	&maschine_jam_outputs_button_level_right_8_group,
-	&maschine_jam_outputs_button_scene_1_group,
-	&maschine_jam_outputs_button_scene_2_group,
-	&maschine_jam_outputs_button_scene_3_group,
-	&maschine_jam_outputs_button_scene_4_group,
-	&maschine_jam_outputs_button_scene_5_group,
-	&maschine_jam_outputs_button_scene_6_group,
-	&maschine_jam_outputs_button_scene_7_group,
-	&maschine_jam_outputs_button_scene_8_group,
-	&maschine_jam_outputs_button_matrix_1x1_group,
-	&maschine_jam_outputs_button_matrix_1x2_group,
-	&maschine_jam_outputs_button_matrix_1x3_group,
-	&maschine_jam_outputs_button_matrix_1x4_group,
-	&maschine_jam_outputs_button_matrix_1x5_group,
-	&maschine_jam_outputs_button_matrix_1x6_group,
-	&maschine_jam_outputs_button_matrix_1x7_group,
-	&maschine_jam_outputs_button_matrix_1x8_group,
-	&maschine_jam_outputs_button_matrix_2x1_group,
-	&maschine_jam_outputs_button_matrix_2x2_group,
-	&maschine_jam_outputs_button_matrix_2x3_group,
-	&maschine_jam_outputs_button_matrix_2x4_group,
-	&maschine_jam_outputs_button_matrix_2x5_group,
-	&maschine_jam_outputs_button_matrix_2x6_group,
-	&maschine_jam_outputs_button_matrix_2x7_group,
-	&maschine_jam_outputs_button_matrix_2x8_group,
-	&maschine_jam_outputs_button_matrix_3x1_group,
-	&maschine_jam_outputs_button_matrix_3x2_group,
-	&maschine_jam_outputs_button_matrix_3x3_group,
-	&maschine_jam_outputs_button_matrix_3x4_group,
-	&maschine_jam_outputs_button_matrix_3x5_group,
-	&maschine_jam_outputs_button_matrix_3x6_group,
-	&maschine_jam_outputs_button_matrix_3x7_group,
-	&maschine_jam_outputs_button_matrix_3x8_group,
-	&maschine_jam_outputs_button_matrix_4x1_group,
-	&maschine_jam_outputs_button_matrix_4x2_group,
-	&maschine_jam_outputs_button_matrix_4x3_group,
-	&maschine_jam_outputs_button_matrix_4x4_group,
-	&maschine_jam_outputs_button_matrix_4x5_group,
-	&maschine_jam_outputs_button_matrix_4x6_group,
-	&maschine_jam_outputs_button_matrix_4x7_group,
-	&maschine_jam_outputs_button_matrix_4x8_group,
-	&maschine_jam_outputs_button_matrix_5x1_group,
-	&maschine_jam_outputs_button_matrix_5x2_group,
-	&maschine_jam_outputs_button_matrix_5x3_group,
-	&maschine_jam_outputs_button_matrix_5x4_group,
-	&maschine_jam_outputs_button_matrix_5x5_group,
-	&maschine_jam_outputs_button_matrix_5x6_group,
-	&maschine_jam_outputs_button_matrix_5x7_group,
-	&maschine_jam_outputs_button_matrix_5x8_group,
-	&maschine_jam_outputs_button_matrix_6x1_group,
-	&maschine_jam_outputs_button_matrix_6x2_group,
-	&maschine_jam_outputs_button_matrix_6x3_group,
-	&maschine_jam_outputs_button_matrix_6x4_group,
-	&maschine_jam_outputs_button_matrix_6x5_group,
-	&maschine_jam_outputs_button_matrix_6x6_group,
-	&maschine_jam_outputs_button_matrix_6x7_group,
-	&maschine_jam_outputs_button_matrix_6x8_group,
-	&maschine_jam_outputs_button_matrix_7x1_group,
-	&maschine_jam_outputs_button_matrix_7x2_group,
-	&maschine_jam_outputs_button_matrix_7x3_group,
-	&maschine_jam_outputs_button_matrix_7x4_group,
-	&maschine_jam_outputs_button_matrix_7x5_group,
-	&maschine_jam_outputs_button_matrix_7x6_group,
-	&maschine_jam_outputs_button_matrix_7x7_group,
-	&maschine_jam_outputs_button_matrix_7x8_group,
-	&maschine_jam_outputs_button_matrix_8x1_group,
-	&maschine_jam_outputs_button_matrix_8x2_group,
-	&maschine_jam_outputs_button_matrix_8x3_group,
-	&maschine_jam_outputs_button_matrix_8x4_group,
-	&maschine_jam_outputs_button_matrix_8x5_group,
-	&maschine_jam_outputs_button_matrix_8x6_group,
-	&maschine_jam_outputs_button_matrix_8x7_group,
-	&maschine_jam_outputs_button_matrix_8x8_group,
-	&maschine_jam_outputs_button_group_a_group,
-	&maschine_jam_outputs_button_group_b_group,
-	&maschine_jam_outputs_button_group_c_group,
-	&maschine_jam_outputs_button_group_d_group,
-	&maschine_jam_outputs_button_group_e_group,
-	&maschine_jam_outputs_button_group_f_group,
-	&maschine_jam_outputs_button_group_g_group,
-	&maschine_jam_outputs_button_group_h_group,
+static const struct attribute_group *maschine_jam_outputs_button_led_groups[] = {
+	&maschine_jam_outputs_button_led_song_group,
+	&maschine_jam_outputs_button_led_step_group,
+	&maschine_jam_outputs_button_led_pad_mode_group,
+	&maschine_jam_outputs_button_led_clear_group,
+	&maschine_jam_outputs_button_led_duplicate_group,
+	&maschine_jam_outputs_button_led_navigate_up_group,
+	&maschine_jam_outputs_button_led_navigate_left_group,
+	&maschine_jam_outputs_button_led_navigate_right_group,
+	&maschine_jam_outputs_button_led_navigate_down_group,
+	&maschine_jam_outputs_button_led_note_repeat_group,
+	&maschine_jam_outputs_button_led_mst_group,
+	&maschine_jam_outputs_button_led_grp_group,
+	&maschine_jam_outputs_button_led_in_1_group,
+	&maschine_jam_outputs_button_led_unknown_1_group,
+	&maschine_jam_outputs_button_led_cue_group,
+	&maschine_jam_outputs_button_led_unknown_2_group,
+	&maschine_jam_outputs_button_led_browse_group,
+	&maschine_jam_outputs_button_led_macro_group,
+	&maschine_jam_outputs_button_led_level_group,
+	&maschine_jam_outputs_button_led_aux_group,
+	&maschine_jam_outputs_button_led_control_group,
+	&maschine_jam_outputs_button_led_auto_group,
+	&maschine_jam_outputs_button_led_perform_group,
+	&maschine_jam_outputs_button_led_notes_group,
+	&maschine_jam_outputs_button_led_lock_group,
+	&maschine_jam_outputs_button_led_tune_group,
+	&maschine_jam_outputs_button_led_swing_group,
+	&maschine_jam_outputs_button_led_shift_group,
+	&maschine_jam_outputs_button_led_play_group,
+	&maschine_jam_outputs_button_led_rec_group,
+	&maschine_jam_outputs_button_led_page_left_group,
+	&maschine_jam_outputs_button_led_page_right_group,
+	&maschine_jam_outputs_button_led_tempo_group,
+	&maschine_jam_outputs_button_led_grid_group,
+	&maschine_jam_outputs_button_led_solo_group,
+	&maschine_jam_outputs_button_led_mute_group,
+	&maschine_jam_outputs_button_led_select_group,
+	&maschine_jam_outputs_button_led_level_left_1_group,
+	&maschine_jam_outputs_button_led_level_left_2_group,
+	&maschine_jam_outputs_button_led_level_left_3_group,
+	&maschine_jam_outputs_button_led_level_left_4_group,
+	&maschine_jam_outputs_button_led_level_left_5_group,
+	&maschine_jam_outputs_button_led_level_left_6_group,
+	&maschine_jam_outputs_button_led_level_left_7_group,
+	&maschine_jam_outputs_button_led_level_left_8_group,
+	&maschine_jam_outputs_button_led_level_right_1_group,
+	&maschine_jam_outputs_button_led_level_right_2_group,
+	&maschine_jam_outputs_button_led_level_right_3_group,
+	&maschine_jam_outputs_button_led_level_right_4_group,
+	&maschine_jam_outputs_button_led_level_right_5_group,
+	&maschine_jam_outputs_button_led_level_right_6_group,
+	&maschine_jam_outputs_button_led_level_right_7_group,
+	&maschine_jam_outputs_button_led_level_right_8_group,
 	NULL
 };
 
-#define MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(_name, _io_attribute_type, _index) \
-	struct maschine_jam_io_attribute maschine_jam_outputs_smartstrip_ ## _name ## _attribute = { \
+#define MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(_name, _index) \
+	struct maschine_jam_io_attribute maschine_jam_outputs_pad_led_ ## _name ## _attribute = { \
 		.type_attribute = { \
 			.attr = {.name = "type", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
 			.show = maschine_jam_outputs_type_show, \
@@ -1896,112 +1755,315 @@ static const struct attribute_group *maschine_jam_outputs_buttons_groups[] = {
 			.show = maschine_jam_outputs_status_show, \
 			.store = maschine_jam_outputs_status_store, \
 		}, \
-		.io_attribute_type = _io_attribute_type, \
+		.io_attribute_type = IO_ATTRIBUTE_OUTPUT_PAD_LED, \
 		.io_index = _index, \
 		.smartstrip_finger = 0, \
 		.smartstrip_finger_mode = 0, \
 	}; \
-	static struct attribute *maschine_jam_outputs_smartstrip_ ## _name ## _attributes[] = { \
-		&maschine_jam_outputs_smartstrip_ ## _name ## _attribute.type_attribute.attr, \
-		&maschine_jam_outputs_smartstrip_ ## _name ## _attribute.channel_attribute.attr, \
-		&maschine_jam_outputs_smartstrip_ ## _name ## _attribute.key_attribute.attr, \
-		&maschine_jam_outputs_smartstrip_ ## _name ## _attribute.status_attribute.attr, \
+	static struct attribute *maschine_jam_outputs_pad_led_ ## _name ## _attributes[] = { \
+		&maschine_jam_outputs_pad_led_ ## _name ## _attribute.type_attribute.attr, \
+		&maschine_jam_outputs_pad_led_ ## _name ## _attribute.channel_attribute.attr, \
+		&maschine_jam_outputs_pad_led_ ## _name ## _attribute.key_attribute.attr, \
+		&maschine_jam_outputs_pad_led_ ## _name ## _attribute.status_attribute.attr, \
 		NULL \
 	}; \
-	static const struct attribute_group maschine_jam_outputs_smartstrip_ ## _name ## _group = { \
+	static const struct attribute_group maschine_jam_outputs_pad_led_ ## _name ## _group = { \
 		.name = #_name, \
-		.attrs = maschine_jam_outputs_smartstrip_ ## _name ## _attributes, \
+		.attrs = maschine_jam_outputs_pad_led_ ## _name ## _attributes, \
 	}
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 0);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 1);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 2);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 3);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 4);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 5);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 6);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 7);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 8);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 9);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_1x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 10);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 11);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 12);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 13);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 14);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 15);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 16);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 17);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 18);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 19);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 20);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_2x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 21);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 22);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 23);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 24);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 25);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 26);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 27);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 28);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 29);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 30);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 31);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_3x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 32);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 33);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 34);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 35);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 36);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 37);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 38);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 39);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 40);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 41);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 42);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_4x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 43);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 44);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 45);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 46);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 47);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 48);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 49);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 50);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 51);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 52);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 53);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_5x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 54);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 55);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 56);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 57);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 58);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 59);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 60);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 61);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 62);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 63);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 64);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_6x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 65);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 66);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 67);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 68);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 69);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 70);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 71);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 72);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 73);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 74);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 75);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_7x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 76);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x01, IO_ATTRIBUTE_LED_SMARTSTRIP, 77);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x02, IO_ATTRIBUTE_LED_SMARTSTRIP, 78);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x03, IO_ATTRIBUTE_LED_SMARTSTRIP, 79);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x04, IO_ATTRIBUTE_LED_SMARTSTRIP, 80);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x05, IO_ATTRIBUTE_LED_SMARTSTRIP, 81);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x06, IO_ATTRIBUTE_LED_SMARTSTRIP, 82);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x07, IO_ATTRIBUTE_LED_SMARTSTRIP, 83);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x08, IO_ATTRIBUTE_LED_SMARTSTRIP, 84);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x09, IO_ATTRIBUTE_LED_SMARTSTRIP, 85);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x10, IO_ATTRIBUTE_LED_SMARTSTRIP, 86);
-MJ_OUTPUTS_SMARTSTRIP_ATTRIBUTE_GROUP(led_8x11, IO_ATTRIBUTE_LED_SMARTSTRIP, 87);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(scene_1, 0);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(scene_2, 1);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(scene_3, 2);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(scene_4, 3);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(scene_5, 4);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(scene_6, 5);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(scene_7, 6);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(scene_8, 7);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_1x1, 8);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_1x2, 9);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_1x3, 10);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_1x4, 11);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_1x5, 12);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_1x6, 13);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_1x7, 14);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_1x8, 15);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_2x1, 16);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_2x2, 17);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_2x3, 18);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_2x4, 19);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_2x5, 20);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_2x6, 21);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_2x7, 22);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_2x8, 23);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_3x1, 24);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_3x2, 25);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_3x3, 26);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_3x4, 27);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_3x5, 28);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_3x6, 29);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_3x7, 30);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_3x8, 31);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_4x1, 32);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_4x2, 33);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_4x3, 34);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_4x4, 35);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_4x5, 36);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_4x6, 37);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_4x7, 38);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_4x8, 39);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_5x1, 40);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_5x2, 41);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_5x3, 42);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_5x4, 43);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_5x5, 44);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_5x6, 45);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_5x7, 46);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_5x8, 47);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_6x1, 48);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_6x2, 49);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_6x3, 50);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_6x4, 51);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_6x5, 52);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_6x6, 53);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_6x7, 54);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_6x8, 55);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_7x1, 56);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_7x2, 57);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_7x3, 58);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_7x4, 59);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_7x5, 60);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_7x6, 61);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_7x7, 62);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_7x8, 63);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_8x1, 64);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_8x2, 65);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_8x3, 66);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_8x4, 67);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_8x5, 68);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_8x6, 69);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_8x7, 70);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(matrix_8x8, 71);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(group_a, 72);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(group_b, 73);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(group_c, 74);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(group_d, 75);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(group_e, 76);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(group_f, 77);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(group_g, 78);
+MJ_OUTPUTS_PAD_LED_ATTRIBUTE_GROUP(group_h, 79);
 
-static const struct attribute_group *maschine_jam_outputs_smartstrips_groups[] = {
+static const struct attribute_group *maschine_jam_outputs_pad_led_groups[] = {
+	&maschine_jam_outputs_pad_led_scene_1_group,
+	&maschine_jam_outputs_pad_led_scene_2_group,
+	&maschine_jam_outputs_pad_led_scene_3_group,
+	&maschine_jam_outputs_pad_led_scene_4_group,
+	&maschine_jam_outputs_pad_led_scene_5_group,
+	&maschine_jam_outputs_pad_led_scene_6_group,
+	&maschine_jam_outputs_pad_led_scene_7_group,
+	&maschine_jam_outputs_pad_led_scene_8_group,
+	&maschine_jam_outputs_pad_led_matrix_1x1_group,
+	&maschine_jam_outputs_pad_led_matrix_1x2_group,
+	&maschine_jam_outputs_pad_led_matrix_1x3_group,
+	&maschine_jam_outputs_pad_led_matrix_1x4_group,
+	&maschine_jam_outputs_pad_led_matrix_1x5_group,
+	&maschine_jam_outputs_pad_led_matrix_1x6_group,
+	&maschine_jam_outputs_pad_led_matrix_1x7_group,
+	&maschine_jam_outputs_pad_led_matrix_1x8_group,
+	&maschine_jam_outputs_pad_led_matrix_2x1_group,
+	&maschine_jam_outputs_pad_led_matrix_2x2_group,
+	&maschine_jam_outputs_pad_led_matrix_2x3_group,
+	&maschine_jam_outputs_pad_led_matrix_2x4_group,
+	&maschine_jam_outputs_pad_led_matrix_2x5_group,
+	&maschine_jam_outputs_pad_led_matrix_2x6_group,
+	&maschine_jam_outputs_pad_led_matrix_2x7_group,
+	&maschine_jam_outputs_pad_led_matrix_2x8_group,
+	&maschine_jam_outputs_pad_led_matrix_3x1_group,
+	&maschine_jam_outputs_pad_led_matrix_3x2_group,
+	&maschine_jam_outputs_pad_led_matrix_3x3_group,
+	&maschine_jam_outputs_pad_led_matrix_3x4_group,
+	&maschine_jam_outputs_pad_led_matrix_3x5_group,
+	&maschine_jam_outputs_pad_led_matrix_3x6_group,
+	&maschine_jam_outputs_pad_led_matrix_3x7_group,
+	&maschine_jam_outputs_pad_led_matrix_3x8_group,
+	&maschine_jam_outputs_pad_led_matrix_4x1_group,
+	&maschine_jam_outputs_pad_led_matrix_4x2_group,
+	&maschine_jam_outputs_pad_led_matrix_4x3_group,
+	&maschine_jam_outputs_pad_led_matrix_4x4_group,
+	&maschine_jam_outputs_pad_led_matrix_4x5_group,
+	&maschine_jam_outputs_pad_led_matrix_4x6_group,
+	&maschine_jam_outputs_pad_led_matrix_4x7_group,
+	&maschine_jam_outputs_pad_led_matrix_4x8_group,
+	&maschine_jam_outputs_pad_led_matrix_5x1_group,
+	&maschine_jam_outputs_pad_led_matrix_5x2_group,
+	&maschine_jam_outputs_pad_led_matrix_5x3_group,
+	&maschine_jam_outputs_pad_led_matrix_5x4_group,
+	&maschine_jam_outputs_pad_led_matrix_5x5_group,
+	&maschine_jam_outputs_pad_led_matrix_5x6_group,
+	&maschine_jam_outputs_pad_led_matrix_5x7_group,
+	&maschine_jam_outputs_pad_led_matrix_5x8_group,
+	&maschine_jam_outputs_pad_led_matrix_6x1_group,
+	&maschine_jam_outputs_pad_led_matrix_6x2_group,
+	&maschine_jam_outputs_pad_led_matrix_6x3_group,
+	&maschine_jam_outputs_pad_led_matrix_6x4_group,
+	&maschine_jam_outputs_pad_led_matrix_6x5_group,
+	&maschine_jam_outputs_pad_led_matrix_6x6_group,
+	&maschine_jam_outputs_pad_led_matrix_6x7_group,
+	&maschine_jam_outputs_pad_led_matrix_6x8_group,
+	&maschine_jam_outputs_pad_led_matrix_7x1_group,
+	&maschine_jam_outputs_pad_led_matrix_7x2_group,
+	&maschine_jam_outputs_pad_led_matrix_7x3_group,
+	&maschine_jam_outputs_pad_led_matrix_7x4_group,
+	&maschine_jam_outputs_pad_led_matrix_7x5_group,
+	&maschine_jam_outputs_pad_led_matrix_7x6_group,
+	&maschine_jam_outputs_pad_led_matrix_7x7_group,
+	&maschine_jam_outputs_pad_led_matrix_7x8_group,
+	&maschine_jam_outputs_pad_led_matrix_8x1_group,
+	&maschine_jam_outputs_pad_led_matrix_8x2_group,
+	&maschine_jam_outputs_pad_led_matrix_8x3_group,
+	&maschine_jam_outputs_pad_led_matrix_8x4_group,
+	&maschine_jam_outputs_pad_led_matrix_8x5_group,
+	&maschine_jam_outputs_pad_led_matrix_8x6_group,
+	&maschine_jam_outputs_pad_led_matrix_8x7_group,
+	&maschine_jam_outputs_pad_led_matrix_8x8_group,
+	&maschine_jam_outputs_pad_led_group_a_group,
+	&maschine_jam_outputs_pad_led_group_b_group,
+	&maschine_jam_outputs_pad_led_group_c_group,
+	&maschine_jam_outputs_pad_led_group_d_group,
+	&maschine_jam_outputs_pad_led_group_e_group,
+	&maschine_jam_outputs_pad_led_group_f_group,
+	&maschine_jam_outputs_pad_led_group_g_group,
+	&maschine_jam_outputs_pad_led_group_h_group,
+	NULL
+};
+
+#define MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(_name, _index) \
+	struct maschine_jam_io_attribute maschine_jam_outputs_smartstrip_led_ ## _name ## _attribute = { \
+		.type_attribute = { \
+			.attr = {.name = "type", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
+			.show = maschine_jam_outputs_type_show, \
+			.store = maschine_jam_outputs_type_store, \
+		}, \
+		.channel_attribute = { \
+			.attr = {.name = "channel", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
+			.show = maschine_jam_outputs_channel_show, \
+			.store = maschine_jam_outputs_channel_store, \
+		}, \
+		.key_attribute = { \
+			.attr = {.name = "key", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
+			.show = maschine_jam_outputs_key_show, \
+			.store = maschine_jam_outputs_key_store, \
+		}, \
+		.status_attribute = { \
+			.attr = {.name = "status", .mode = MASCHINE_JAM_SYSFS_ATTRIBUTE_PERMISSIONS}, \
+			.show = maschine_jam_outputs_status_show, \
+			.store = maschine_jam_outputs_status_store, \
+		}, \
+		.io_attribute_type = IO_ATTRIBUTE_OUTPUT_SMARTSTRIP_LED, \
+		.io_index = _index, \
+		.smartstrip_finger = 0, \
+		.smartstrip_finger_mode = 0, \
+	}; \
+	static struct attribute *maschine_jam_outputs_smartstrip_led_ ## _name ## _attributes[] = { \
+		&maschine_jam_outputs_smartstrip_led_ ## _name ## _attribute.type_attribute.attr, \
+		&maschine_jam_outputs_smartstrip_led_ ## _name ## _attribute.channel_attribute.attr, \
+		&maschine_jam_outputs_smartstrip_led_ ## _name ## _attribute.key_attribute.attr, \
+		&maschine_jam_outputs_smartstrip_led_ ## _name ## _attribute.status_attribute.attr, \
+		NULL \
+	}; \
+	static const struct attribute_group maschine_jam_outputs_smartstrip_led_ ## _name ## _group = { \
+		.name = #_name, \
+		.attrs = maschine_jam_outputs_smartstrip_led_ ## _name ## _attributes, \
+	}
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x01, 0);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x02, 1);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x03, 2);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x04, 3);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x05, 4);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x06, 5);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x07, 6);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x08, 7);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x09, 8);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x10, 9);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(1x11, 10);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x01, 11);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x02, 12);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x03, 13);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x04, 14);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x05, 15);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x06, 16);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x07, 17);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x08, 18);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x09, 19);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x10, 20);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(2x11, 21);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x01, 22);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x02, 23);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x03, 24);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x04, 25);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x05, 26);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x06, 27);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x07, 28);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x08, 29);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x09, 30);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x10, 31);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(3x11, 32);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x01, 33);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x02, 34);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x03, 35);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x04, 36);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x05, 37);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x06, 38);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x07, 39);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x08, 40);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x09, 41);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x10, 42);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(4x11, 43);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x01, 44);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x02, 45);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x03, 46);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x04, 47);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x05, 48);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x06, 49);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x07, 50);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x08, 51);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x09, 52);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x10, 53);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(5x11, 54);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x01, 55);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x02, 56);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x03, 57);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x04, 58);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x05, 59);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x06, 60);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x07, 61);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x08, 62);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x09, 63);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x10, 64);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(6x11, 65);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x01, 66);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x02, 67);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x03, 68);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x04, 69);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x05, 70);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x06, 71);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x07, 72);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x08, 73);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x09, 74);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x10, 75);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(7x11, 76);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x01, 77);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x02, 78);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x03, 79);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x04, 80);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x05, 81);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x06, 82);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x07, 83);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x08, 84);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x09, 85);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x10, 86);
+MJ_OUTPUTS_SMARTSTRIP_LED_ATTRIBUTE_GROUP(8x11, 87);
+
+static const struct attribute_group *maschine_jam_outputs_smartstrip_led_groups[] = {
 	&maschine_jam_outputs_smartstrip_led_1x01_group,
 	&maschine_jam_outputs_smartstrip_led_1x02_group,
 	&maschine_jam_outputs_smartstrip_led_1x03_group,
@@ -2167,6 +2229,65 @@ static int maschine_jam_midi_out_close(struct snd_rawmidi_substream *substream){
 	return 0;
 }
 
+static inline uint8_t maschine_jam_convert_smartstrip_value_to_led_index(uint8_t value){
+	if (value <= 6){
+		return 0;
+	} else if (value >= 7 && value <= 19){
+		return 1;
+	} else if (value >= 20 && value <= 31){
+		return 2;
+	} else if (value >= 32 && value <= 44){
+		return 3;
+	} else if (value >= 45 && value <= 57){
+		return 4;
+	} else if (value >= 58 && value <= 69){
+		return 5;
+	} else if (value >= 70 && value <= 82){
+		return 6;
+	} else if (value >= 83 && value <= 95){
+		return 7;
+	} else if (value >= 96 && value <= 107){
+		return 8;
+	} else if (value >= 108 && value <= 120){
+		return 9;
+	} else {
+		return 10;
+	}
+}
+
+static inline uint8_t maschine_jam_get_smartstrip_led_state(struct maschine_jam_smartstrip_display_state* smartstrip_display_state, uint8_t smartstrip_led_index){
+	switch(smartstrip_display_state->mode){
+		case MJ_SMARTSTRIP_DISPLAY_MODE_SINGLE:
+			if (maschine_jam_convert_smartstrip_value_to_led_index(smartstrip_display_state->value) >= smartstrip_led_index){
+				return smartstrip_display_state->color;
+			}
+			break;
+		case MJ_SMARTSTRIP_DISPLAY_MODE_DUAL:
+		case MJ_SMARTSTRIP_DISPLAY_MODE_PAN:
+		case MJ_SMARTSTRIP_DISPLAY_MODE_DOT:
+			if (maschine_jam_convert_smartstrip_value_to_led_index(smartstrip_display_state->value) == smartstrip_led_index){
+				return smartstrip_display_state->color;
+			}
+			break;
+	}
+	return 0;
+}
+
+static inline void maschine_jam_refresh_hid_report_led_smartstrips(struct maschine_jam_driver_data *driver_data){
+	uint8_t i;
+	uint8_t smartstrip_number;
+	uint8_t smartstrip_led_index;
+	struct maschine_jam_smartstrip_display_state* smartstrip_display_state;
+	
+	for (i=0; i<MASCHINE_JAM_NUMBER_SMARTSTRIP_LEDS; i++){
+		smartstrip_number = i / MASCHINE_JAM_NUMBER_LEDS_PER_SMARTSTRIP;
+		smartstrip_led_index = i % MASCHINE_JAM_NUMBER_LEDS_PER_SMARTSTRIP;
+		smartstrip_display_state = &driver_data->hid_report_led_smartstrips_display_states[smartstrip_number];
+		driver_data->hid_report_led_smartstrips[i] = maschine_jam_get_smartstrip_led_state(smartstrip_display_state, smartstrip_led_index);
+		//printk(KERN_ALERT "maschine_jam_refresh_hid_report_led_smartstrips: number: %d, index: %d, value: %d\n", smartstrip_number, smartstrip_led_index, driver_data->hid_report_led_smartstrips[i]);
+	}
+}
+
 // get virtual midi data and transmit to physical maschine jam, cannot block
 static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substream, int up){
 	//static int num;
@@ -2178,6 +2299,9 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 	struct maschine_jam_output_node* output_node;
 	uint8_t write_value;
 	struct snd_seq_event midi_event;
+	unsigned int sysex_len;
+	uint8_t* sysex_ptr;
+	uint8_t i;
 
 	if (up != 0) {
 		while (snd_rawmidi_transmit(substream, &data, 1) == 1) {
@@ -2230,7 +2354,7 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 								schedule_work(&driver_data->hid_report_led_pads_work);
 							}else if(output_node->type == MJ_OUTPUT_SMARTSTRIP_LED_NODE){
 								spin_lock(&driver_data->hid_report_led_smartstrips_lock);
-								driver_data->hid_report_led_strips[output_node->index] = write_value;
+								driver_data->hid_report_led_smartstrips[output_node->index] = write_value;
 								spin_unlock(&driver_data->hid_report_led_smartstrips_lock);
 								schedule_work(&driver_data->hid_report_led_smartstrips_work);
 							}else{
@@ -2241,11 +2365,33 @@ static void maschine_jam_midi_out_trigger(struct snd_rawmidi_substream *substrea
 					}
 					spin_unlock_irqrestore(&driver_data->midi_out_mapping_lock, flags);
 				} else if (snd_seq_ev_is_variable_type(&midi_event)){
-					printk(KERN_NOTICE "snd_midi_event_encode: variable event_type\n");
+					sysex_len = midi_event.data.ext.len;
+					sysex_ptr = &((uint8_t*)midi_event.data.ext.ptr)[11];
+					printk(KERN_NOTICE "snd_midi_event_encode: variable event_type, length=%d\n", sysex_len);
+					if (sysex_len == 20){
+						printk(KERN_ALERT "maschine_jam_midi_out_trigger: data.ext.ptr[11]=%02X\n", sysex_ptr[0]);
+						spin_lock(&driver_data->hid_report_led_smartstrips_lock);
+						for (i=0; i<MASCHINE_JAM_NUMBER_SMARTSTRIPS; i++){
+							driver_data->hid_report_led_smartstrips_display_states[i].value = sysex_ptr[i];
+						}
+						maschine_jam_refresh_hid_report_led_smartstrips(driver_data);
+						spin_unlock(&driver_data->hid_report_led_smartstrips_lock);
+						schedule_work(&driver_data->hid_report_led_smartstrips_work);
+					} else if (sysex_len == 28){
+						printk(KERN_ALERT "maschine_jam_midi_out_trigger: data.ext.ptr[11-12]=%02X%02X\n", sysex_ptr[0], sysex_ptr[1]);
+						spin_lock(&driver_data->hid_report_led_smartstrips_lock);
+						for (i=0; i<MASCHINE_JAM_NUMBER_SMARTSTRIPS; i++){
+							driver_data->hid_report_led_smartstrips_display_states[i].mode = sysex_ptr[2 * i];
+							driver_data->hid_report_led_smartstrips_display_states[i].color = sysex_ptr[(2*i)+1];
+						}
+						maschine_jam_refresh_hid_report_led_smartstrips(driver_data);
+						spin_unlock(&driver_data->hid_report_led_smartstrips_lock);
+						schedule_work(&driver_data->hid_report_led_smartstrips_work);
+					} else {
+						printk(KERN_ALERT "snd_midi_event_encode: unknwon variable event_type length:%d\n", sysex_len);
+					}
 				} else {
-					printk(KERN_ALERT "snd_midi_event_encode: unknwon event_type:%d\n", \
-						midi_event.type
-					);
+					printk(KERN_ALERT "snd_midi_event_encode: unknwon event_type:%d\n", midi_event.type);
 				}
 			} else if (sequencer_status < 0){
 				printk(KERN_ALERT "snd_midi_event_encode: sequencer status: %d\n", sequencer_status);
@@ -2424,8 +2570,9 @@ static void maschine_jam_delete_sysfs_inputs_interface(struct maschine_jam_drive
 static int maschine_jam_create_sysfs_outputs_interface(struct maschine_jam_driver_data *driver_data){
 	int error_code = 0;
 	struct kobject* directory_outputs = NULL;
-	struct kobject* directory_outputs_buttons = NULL;
-	struct kobject* directory_outputs_smartstrips = NULL;
+	struct kobject* directory_outputs_button_leds = NULL;
+	struct kobject* directory_outputs_pad_leds = NULL;
+	struct kobject* directory_outputs_smartstrip_leds = NULL;
 	struct kobject *device_kobject = &driver_data->mj_hid_device->dev.kobj;
 
 	directory_outputs = kobject_create_and_add("outputs", device_kobject);
@@ -2434,50 +2581,69 @@ static int maschine_jam_create_sysfs_outputs_interface(struct maschine_jam_drive
 		error_code = -1;
 		goto return_error_code;
 	}
-	directory_outputs_buttons = kobject_create_and_add("buttons", directory_outputs);
-	if (directory_outputs_buttons == NULL) {
+	directory_outputs_button_leds = kobject_create_and_add("button_leds", directory_outputs);
+	if (directory_outputs_button_leds == NULL) {
 		printk(KERN_ALERT "kobject_create_and_add buttons failed!\n");
 		error_code = -1;
 		goto failure_delete_kobject_outputs;
 	}
-	error_code = sysfs_create_groups(directory_outputs_buttons, maschine_jam_outputs_buttons_groups);
+	error_code = sysfs_create_groups(directory_outputs_button_leds, maschine_jam_outputs_button_led_groups);
 	if (error_code < 0) {
 		printk(KERN_ALERT "sysfs_create_groups buttons failed!\n");
-		goto failure_delete_kobject_outputs_buttons;
+		goto failure_delete_kobject_outputs_button_leds;
 	}
-	directory_outputs_smartstrips = kobject_create_and_add("smartstrips", directory_outputs);
-	if (directory_outputs_smartstrips == NULL) {
+	directory_outputs_pad_leds = kobject_create_and_add("pad_leds", directory_outputs);
+	if (directory_outputs_pad_leds == NULL) {
+		printk(KERN_ALERT "kobject_create_and_add pads failed!\n");
+		error_code = -1;
+		goto failure_remove_outputs_button_leds_groups;
+	}
+	error_code = sysfs_create_groups(directory_outputs_pad_leds, maschine_jam_outputs_pad_led_groups);
+	if (error_code < 0) {
+		printk(KERN_ALERT "sysfs_create_groups pads failed!\n");
+		goto failure_delete_kobject_outputs_pad_leds;
+	}
+	directory_outputs_smartstrip_leds = kobject_create_and_add("smartstrip_leds", directory_outputs);
+	if (directory_outputs_smartstrip_leds == NULL) {
 		printk(KERN_ALERT "kobject_create_and_add smartstrips failed!\n");
 		error_code = -1;
-		goto failure_remove_outputs_buttons_groups;
+		goto failure_remove_outputs_pad_leds_groups;
 	}
-	error_code = sysfs_create_groups(directory_outputs_smartstrips, maschine_jam_outputs_smartstrips_groups);
+	error_code = sysfs_create_groups(directory_outputs_smartstrip_leds, maschine_jam_outputs_smartstrip_led_groups);
 	if (error_code < 0) {
 		printk(KERN_ALERT "sysfs_create_groups smartstrips failed!\n");
-		goto failure_delete_kobject_outputs_smartstrips;
+		goto failure_delete_kobject_outputs_smartstrip_leds;
 	}
 	driver_data->directory_outputs = directory_outputs;
-	driver_data->directory_outputs_buttons = directory_outputs_buttons;
-	driver_data->directory_outputs_smartstrips = directory_outputs_smartstrips;
+	driver_data->directory_outputs_button_leds = directory_outputs_button_leds;
+	driver_data->directory_outputs_pad_leds = directory_outputs_pad_leds;
+	driver_data->directory_outputs_smartstrip_leds = directory_outputs_smartstrip_leds;
 	goto return_error_code;
 
-failure_delete_kobject_outputs_smartstrips:
-	kobject_del(directory_outputs_smartstrips);
-failure_remove_outputs_buttons_groups:
-	sysfs_remove_groups(directory_outputs_buttons, maschine_jam_outputs_buttons_groups);
-failure_delete_kobject_outputs_buttons:
-	kobject_del(directory_outputs_buttons);
+failure_delete_kobject_outputs_smartstrip_leds:
+	kobject_del(directory_outputs_smartstrip_leds);
+failure_remove_outputs_pad_leds_groups:
+	sysfs_remove_groups(directory_outputs_pad_leds, maschine_jam_outputs_pad_led_groups);
+failure_delete_kobject_outputs_pad_leds:
+	kobject_del(directory_outputs_pad_leds);
+failure_remove_outputs_button_leds_groups:
+	sysfs_remove_groups(directory_outputs_button_leds, maschine_jam_outputs_button_led_groups);
+failure_delete_kobject_outputs_button_leds:
+	kobject_del(directory_outputs_button_leds);
 failure_delete_kobject_outputs:
 	kobject_del(directory_outputs);
 return_error_code:
 	return error_code;
 }
 static void maschine_jam_delete_sysfs_outputs_interface(struct maschine_jam_driver_data *driver_data){
-	if (driver_data->directory_outputs_smartstrips != NULL){
-		kobject_del(driver_data->directory_outputs_smartstrips);
+	if (driver_data->directory_outputs_smartstrip_leds != NULL){
+		kobject_del(driver_data->directory_outputs_smartstrip_leds);
 	}
-	if (driver_data->directory_outputs_buttons != NULL){
-		kobject_del(driver_data->directory_outputs_buttons);
+	if (driver_data->directory_outputs_pad_leds != NULL){
+		kobject_del(driver_data->directory_outputs_pad_leds);
+	}
+	if (driver_data->directory_outputs_button_leds != NULL){
+		kobject_del(driver_data->directory_outputs_button_leds);
 	}
 	if (driver_data->directory_outputs != NULL){
 		kobject_del(driver_data->directory_outputs);

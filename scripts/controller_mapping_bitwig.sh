@@ -204,7 +204,7 @@ midi_map_io(){
 		)
 	)
 	(cd outputs
-		(cd buttons
+		(cd button_leds
 			midi_map_io song 0 control_change 30
 			midi_map_io step 0 control_change 31
 			midi_map_io pad_mode 0 control_change 32
@@ -259,7 +259,8 @@ midi_map_io(){
 			midi_map_io level_right_6 0 control_change 25
 			midi_map_io level_right_7 0 control_change 26
 			midi_map_io level_right_8 0 control_change 27
-
+		)
+		(cd pad_leds
 			midi_map_io scene_1 1 note 0
 			midi_map_io scene_2 1 note 1
 			midi_map_io scene_3 1 note 2
@@ -341,16 +342,16 @@ midi_map_io(){
 			midi_map_io matrix_8x7 0 note 84
 			midi_map_io matrix_8x8 0 note 85
 		)
-		(cd smartstrips
+		(cd smartstrip_leds
 			#purely for the purpose of testing!
-			midi_map_io led_1x01 0 control_change 38
-			midi_map_io led_1x11 0 control_change 39
-			midi_map_io led_4x01 0 note 82
-			midi_map_io led_4x11 0 note 83
-			midi_map_io led_5x04 0 note 84
-			midi_map_io led_5x06 0 note 85
-			midi_map_io led_8x01 0 control_change 8
-			midi_map_io led_8x11 0 control_change 9
+			#midi_map_io 1x01 0 control_change 38
+			#midi_map_io 1x11 0 control_change 39
+			#midi_map_io 4x01 0 note 82
+			#midi_map_io 4x11 0 note 83
+			#midi_map_io 5x04 0 note 84
+			#midi_map_io 5x06 0 note 85
+			#midi_map_io 8x01 0 control_change 8
+			#midi_map_io 8x11 0 control_change 9
 		)
 	)
 )
